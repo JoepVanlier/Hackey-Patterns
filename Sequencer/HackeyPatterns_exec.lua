@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.01
+@version 0.02
 @screenshot 
 
 @about 
@@ -27,6 +27,8 @@
 
 --[[
  * Changelog:
+ * v0.02 (2018-10-01)
+   + Started adding navigation / clipboard stuff. No editing possible yet.
  * v0.01 (2018-08-03)
    + First upload.
 --]]
@@ -554,7 +556,6 @@ function seq:loadKeys( keySet )
   end
 end
 
-
 seq.colorschemes = {"default", "buzz", "it", "hacker", "renoise", "renoiseB"}
 function seq:loadColors(colorScheme)
   -- If you come up with a cool alternative color scheme, let me know
@@ -786,6 +787,16 @@ function seq:loadColors(colorScheme)
   self.cellh  = h
 end
 
+local function clamp( min, max, val )
+  if ( val > max ) then
+    return max
+  elseif ( val < min ) then
+    return min
+  else
+    return val
+  end
+end
+
 local function print(...)
   if ( not ... ) then
     reaper.ShowConsoleMsg("nil value\n")
@@ -1011,9 +1022,10 @@ function seq:populateSequencer()
 
     local ystart = math.floor(pos/dy)
     local yend = math.ceil((pos+len)/dy)
-    for q=ystart,yend do
+    --for q=ystart,yend do
+    q = ystart
       patterns[tracks[v[2]]][q] = guidToPatternIdx[i]
-    end
+    --end
   end
   
   self.patterns     = patterns
@@ -1064,7 +1076,7 @@ function seq:updateGUI()
   for ix=xStart,xEnd do
     local xl = xOrigin + fw*(ix+1)
     gfx.set( table.unpack( colors.textcolor ) )
-    gfx.x = xl
+    gfx.x = xl + 4
     gfx.y = yOrigin
     gfx.printf( "%s", trackTitles[ix+scrollx] )
     
@@ -1075,7 +1087,7 @@ function seq:updateGUI()
     else
       gfx.set( table.unpack( colors.inactive ) )
     end
-    gfx.rect( xl - 2, yOrigin + fh, .5*fw, fh )
+    gfx.rect( xl, yOrigin + fh, .5*fw, fh )
     gfx.set( table.unpack( colors.textcolor ) )
 
     if ( solo == 1 ) then
@@ -1083,7 +1095,7 @@ function seq:updateGUI()
     else
       gfx.set( table.unpack( colors.inactive ) )
     end
-    gfx.rect( xl + .5*fw-2, yOrigin + fh, .5*fw, fh )
+    gfx.rect( xl + .5*fw, yOrigin + fh, .5*fw, fh )
     gfx.set( table.unpack( colors.textcolor ) )
     
     gfx.x = xl + 0.25 * fw - mm
@@ -1091,28 +1103,45 @@ function seq:updateGUI()
     gfx.printf( "M" )
     gfx.x = xl + 0.75 * fw - ms
     gfx.printf( "S" )
-    gfx.rect( xl+.5*fw-3, yOrigin + 1*fh-1, 1, fh )
+    gfx.rect( xl+.5*fw, yOrigin + 1*fh-1, 1, fh )
   end
   
   -- Cursor
   gfx.set( table.unpack( colors.linecolor3 ) )
-  gfx.rect( xOrigin + fw * ( 1 + xrel ) - 3, xOrigin + ( 2 + yrel ) * fh, fw + 1, fh )
+  gfx.rect( xOrigin + fw * ( 1 + xrel ), xOrigin + ( 2 + yrel ) * fh, fw + 1, fh )
+    
+  ------------------------------
+  -- Clipboard block drawing
+  ------------------------------
+  local cp = self.cp
+  if ( cp.ystart > -1 ) then
+    local xl  = clamp(0, fov.width,  cp.xstart - fov.scrollx)
+    local xe  = clamp(0, fov.width,  cp.xstop  - fov.scrollx)  
+    local yl  = clamp(0, fov.height, cp.ystart - fov.scrolly)
+    local ye  = clamp(0, fov.height, cp.ystop  - fov.scrolly)
+    gfx.set(table.unpack(colors.copypaste))    
+    if ( cp.all == 0 ) then
+      gfx.rect(xOrigin + (1+xl) * fw, yOrigin + (2+yl) * fh, fw * ( xe - xl + 1 ), fh * ( ye - yl + 1 ) )
+    else
+      gfx.rect(xOrigin + fw, yOrigin + (2+yl) * fh, fw * ( xEnd - xStart + 1 ), fh * ( ye - yl + 1 ) )
+    end
+  end    
     
   -- Dark alternating colors
   gfx.set( table.unpack( colors.linecolor2 ) )
   for iy = 6,ymax,8 do
-    gfx.rect( xOrigin, yOrigin + fh * iy, fw-2, fh )
+    gfx.rect( xOrigin, yOrigin + fh * iy, fw, fh )
   end
   gfx.set( table.unpack( colors.linecolor5 ) )
   for iy = 2,ymax,8 do
-    gfx.rect( xOrigin, yOrigin + fh * iy, fw-2, fh )
+    gfx.rect( xOrigin, yOrigin + fh * iy, fw, fh )
   end
   
   -- Pattern names
   gfx.set( table.unpack( colors.textcolor ) )
   for ix=xStart,xEnd do
     for iy=0,ymax do
-      gfx.x = xOrigin + (ix+1)*fw
+      gfx.x = xOrigin + (ix+1)*fw + 3
       gfx.y = yOrigin + (iy+2)*fh
       if ( self.patterns[ix][iy] ) then
         gfx.printf("%s", patternNames[patterns[ix][iy+scrolly]])        
@@ -1124,7 +1153,7 @@ function seq:updateGUI()
   
   -- Vertical lines
   for ix=xStart,xEnd+1 do
-    gfx.rect( xOrigin + fw*(ix+1) - 3, yOrigin, 1, gfx.h-yOrigin )
+    gfx.rect( xOrigin + fw*(ix+1), yOrigin, 1, gfx.h-yOrigin )
   end
   
   -- Tick counts
@@ -1139,14 +1168,14 @@ function seq:updateGUI()
   -- Horizontal lines
   for iy=1,ymax do
     gfx.set( table.unpack( colors.inactive ) )
-    gfx.rect( xOrigin,  yOrigin + (iy+1)*fh-1, fw * (xEnd-xStart+2)-3, 1 )
+    gfx.rect( xOrigin + 3,  yOrigin + (iy+1)*fh-1, fw * (xEnd-xStart+2)-3, 1 )
   end 
   
   -- Header lines
   gfx.set( table.unpack( colors.textcolor ) )
-  gfx.rect( xOrigin+fw-2, yOrigin, fw * (xEnd-xStart+1), 1 )
-  gfx.rect( xOrigin+fw-2, yOrigin + fh-1, fw * (xEnd-xStart+1), 1 )
-  gfx.rect( xOrigin+fw-2, yOrigin + 2*fh-1, fw * (xEnd-xStart+1), 1 )
+  gfx.rect( xOrigin+fw, yOrigin, fw * (xEnd-xStart+1), 1 )
+  gfx.rect( xOrigin+fw, yOrigin + fh-1, fw * (xEnd-xStart+1), 1 )
+  gfx.rect( xOrigin+fw, yOrigin + 2*fh-1, fw * (xEnd-xStart+1), 1 )
 end
 
 ------------------------------
@@ -1165,14 +1194,14 @@ function seq:forceCursorInRange(forceY)
   if ( self.ypos < 0 ) then
     self.ypos = 0
   end  
-  if ( self.xpos > self.max_xpos ) then
-    self.xpos = math.floor( self.max_xpos )
+  if ( self.xpos > self.max_xpos - 1 ) then
+    self.xpos = math.floor( self.max_xpos - 1 )
   end
-  if ( yTarget > self.max_ypos ) then
-    yTarget = math.floor( self.max_ypos )
+  if ( yTarget > self.max_ypos - 1 ) then
+    yTarget = math.floor( self.max_ypos - 1 )
   end
-  if ( self.ypos > self.max_ypos ) then
-    self.ypos = math.floor( self.max_ypos )
+  if ( self.ypos > self.max_ypos - 1 ) then
+    self.ypos = math.floor( self.max_ypos - 1 )
   end  
   -- Is the cursor off fov?
   if ( ( yTarget - fov.scrolly ) > self.fov.height ) then
