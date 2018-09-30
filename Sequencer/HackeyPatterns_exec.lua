@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.02
+@version 0.03
 @screenshot 
 
 @about 
@@ -27,6 +27,8 @@
 
 --[[
  * Changelog:
+ * v0.03 (2018-10-01)
+   + Made patterns per track rather than per project.
  * v0.02 (2018-10-01)
    + Started adding navigation / clipboard stuff. No editing possible yet.
  * v0.01 (2018-08-03)
@@ -38,7 +40,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.01"
+scriptName = "Hackey Patterns v0.03"
 postMusic = 30
 
 seq             = {}
@@ -57,6 +59,10 @@ seq.cfg.nChars    = 9
 seq.cfg.nameSize  = 180
 seq.cfg.page      = 4
 
+seq.advance       = 1
+
+seq.cfg.zoom      = 1
+
 seq.cp = {}
 seq.cp.lastShiftCoord = nil
 seq.cp.xstart = -1
@@ -64,6 +70,8 @@ seq.cp.ystart = -1
 seq.cp.xstop = -1
 seq.cp.ystop = -1
 seq.cp.all = 0
+
+seq.chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 -- This block is straight up copied from the tracker for now. Will clean this up when the time comes.
 
@@ -806,6 +814,23 @@ local function print(...)
   reaper.ShowConsoleMsg("\n")
 end
 
+local function fitStr( str, width )
+  local w = 0
+  local a = 0
+  width = width - 10
+  local nstr = #str
+  
+  while( a <= nstr ) do
+    a = a + 1
+    w = gfx.measurestr(str:sub(1,a))
+    if ( w > width ) then
+      break;
+    end
+  end
+  
+  return str:sub(1,a)
+end
+
 -- Print contents of `tbl`, with indentation.
 -- `indent` sets the initial level of indentation.
 function tprint (tbl, indent, maxindent, verbose)
@@ -906,23 +931,38 @@ function seq:buildPatternList()
   local guidToPatternIdx  = {}
   local idxToGUID         = {}
   local patternNames      = {}
-  local nChars            = self.nChars
+  local trackToIndex      = self.trackToIndex
+  local nChars            = self.cfg.nChars
+  local cellw             = self.cellw
+  local nTracks           = reaper.CountTracks(0)
   
-  local c = 1
-  for i,v in pairs( self.poolGUIDs ) do  
+  local idx = {}
+  for jTrack=0,nTracks-1 do
+    idx[jTrack] = 1
+    if ( not guidToPatternIdx[jTrack] ) then
+      guidToPatternIdx[jTrack] = {}
+      idxToGUID[jTrack] = {}
+      patternNames[jTrack] = {}
+    end
+  end
+  
+  for i,v in pairs( self.poolGUIDs ) do
+    trackidx = trackToIndex[v[2]]
+    index = idx[trackidx]
+  
     -- If it hasn't been seen, add it
-    if ( not guidToPatternIdx[i] ) then
-      guidToPatternIdx[i] = c
-      idxToGUID[c]        = i
+    if ( not guidToPatternIdx[trackidx][i] ) then
+      guidToPatternIdx[trackidx][i] = index
+      idxToGUID[trackidx][index]    = i
       
       local str = reaper.GetTakeName(v[3])
       if ( str == "untitled MIDI item" ) then
-        patternNames[c] = string.format("%02d", c)
+        patternNames[trackidx][index] = string.format("%02d", index)
       else
-        patternNames[c] = str:sub(1,nChars)
+        patternNames[trackidx][index] = fitStr( str, cellw ) --str:sub(1,nChars)
       end
-      
-      c = c + 1
+       
+      idx[trackidx] = idx[trackidx] + 1
     end
   end
   
@@ -985,36 +1025,37 @@ function seq:terminate()
   gfx.quit()
 end
 
-function seq:getResolution(take)
-    local rowPerQn = 4
-    local res = 16
-    
-    -- How many rows do we need?
-    local ppqPerQn = reaper.MIDI_GetPPQPosFromProjQN(take, 1) - reaper.MIDI_GetPPQPosFromProjQN(take, 0)
-    local ppqPerSec = 1.0 / ( reaper.MIDI_GetProjTimeFromPPQPos(take, 1) - reaper.MIDI_GetProjTimeFromPPQPos(take, 0) )
-    
-    return (rowPerQn/res) * ppqPerSec / ppqPerQn
+-- Fetch the track names and construct a table which has the tracks.
+function seq:fetchTracks()
+  local trackToIndex  = {}
+  local trackTitles   = {}
+  local cellw         = self.cellw
+  local colors        = self.colors
+  local nTracks       = self.max_xpos
+  
+  gfx.setfont(1, colors.patternFont, colors.patternFontSize)
+  for i=0,nTracks-1 do
+    local trk = reaper.GetTrack(0, i)
+    local retval, str = reaper.GetSetMediaTrackInfo_String(trk, "P_NAME", "", false)
+    trackTitles[i] = fitStr( str, cellw )  
+    trackToIndex[trk] = i
+  end
+  
+  self.trackToIndex = trackToIndex
+  self.trackTitles  = trackTitles  
 end
 
 function seq:populateSequencer()
   local patterns      = {}
-  local tracks        = {}
-  local trackTitles   = {}
-  local nTracks       = self.max_xpos
-  
-  for i=0,nTracks-1 do
-    local trk = reaper.GetTrack(0, i)
-    local retval, str = reaper.GetSetMediaTrackInfo_String(trk, "P_NAME", "", false)
-    trackTitles[i] = str:sub(1,self.nChars)
-
-    patterns[i] = {}
-    tracks[trk] = i
-  end
+  local trackToIndex  = self.trackToIndex
   
   -- Go over all the media items we found that weren't in the pool
   --   otherGUIDs[GUID] = { mediaItem, track, take }
   --   guidToPatternIdx[i] = c
-  local dy = 0.3
+  for i=0,self.max_xpos-1 do
+    patterns[i] = {}
+  end
+  local dy = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local guidToPatternIdx = self.guidToPatternIdx
   for i,v in pairs(self.otherGUIDs) do
     local pos = reaper.GetMediaItemInfo_Value(v[1], "D_POSITION")
@@ -1022,17 +1063,17 @@ function seq:populateSequencer()
 
     local ystart = math.floor(pos/dy)
     local yend = math.ceil((pos+len)/dy)
-    --for q=ystart,yend do
-    q = ystart
-      patterns[tracks[v[2]]][q] = guidToPatternIdx[i]
-    --end
+    local q = ystart
+    local trackIdx = trackToIndex[v[2]]
+    patterns[trackIdx][q] = guidToPatternIdx[trackIdx][i]
   end
   
   self.patterns     = patterns
-  self.trackTitles  = trackTitles
 end
 
 function seq:updateData()
+  seq:computeSize()
+  seq:fetchTracks()
   seq:fetchPatterns()
   seq:copyUnknownToPool()
   seq:buildPatternList()
@@ -1071,8 +1112,8 @@ function seq:updateGUI()
   end
   
   -- Draw headers
-  local mm = gfx.measurestr("M")
-  local ms = gfx.measurestr("S")  
+  local mm = .5*gfx.measurestr("M")
+  local ms = .5*gfx.measurestr("S")  
   for ix=xStart,xEnd do
     local xl = xOrigin + fw*(ix+1)
     gfx.set( table.unpack( colors.textcolor ) )
@@ -1106,10 +1147,6 @@ function seq:updateGUI()
     gfx.rect( xl+.5*fw, yOrigin + 1*fh-1, 1, fh )
   end
   
-  -- Cursor
-  gfx.set( table.unpack( colors.linecolor3 ) )
-  gfx.rect( xOrigin + fw * ( 1 + xrel ), xOrigin + ( 2 + yrel ) * fh, fw + 1, fh )
-    
   ------------------------------
   -- Clipboard block drawing
   ------------------------------
@@ -1120,13 +1157,17 @@ function seq:updateGUI()
     local yl  = clamp(0, fov.height, cp.ystart - fov.scrolly)
     local ye  = clamp(0, fov.height, cp.ystop  - fov.scrolly)
     gfx.set(table.unpack(colors.copypaste))    
-    if ( cp.all == 0 ) then
+    if ( cp.all == 0 ) then   
       gfx.rect(xOrigin + (1+xl) * fw, yOrigin + (2+yl) * fh, fw * ( xe - xl + 1 ), fh * ( ye - yl + 1 ) )
     else
       gfx.rect(xOrigin + fw, yOrigin + (2+yl) * fh, fw * ( xEnd - xStart + 1 ), fh * ( ye - yl + 1 ) )
     end
-  end    
-    
+  end
+  
+  -- Cursor
+  gfx.set( table.unpack( colors.linecolor3 ) )
+  gfx.rect( xOrigin + fw * ( 1 + xrel ), xOrigin + ( 2 + yrel ) * fh, fw + 1, fh )
+  
   -- Dark alternating colors
   gfx.set( table.unpack( colors.linecolor2 ) )
   for iy = 6,ymax,8 do
@@ -1144,7 +1185,7 @@ function seq:updateGUI()
       gfx.x = xOrigin + (ix+1)*fw + 3
       gfx.y = yOrigin + (iy+2)*fh
       if ( self.patterns[ix][iy] ) then
-        gfx.printf("%s", patternNames[patterns[ix][iy+scrolly]])        
+        gfx.printf("%s", patternNames[ix+scrollx][patterns[ix+scrollx][iy+scrolly]])        
       else
         gfx.printf("...")
       end
@@ -1176,6 +1217,18 @@ function seq:updateGUI()
   gfx.rect( xOrigin+fw, yOrigin, fw * (xEnd-xStart+1), 1 )
   gfx.rect( xOrigin+fw, yOrigin + fh-1, fw * (xEnd-xStart+1), 1 )
   gfx.rect( xOrigin+fw, yOrigin + 2*fh-1, fw * (xEnd-xStart+1), 1 )
+  
+  -- Pattern names
+  local X = gfx.w - self.cfg.nameSize + 5
+  gfx.x = X
+  gfx.y = fh
+  gfx.printf( "Patterns" )
+  local chars = seq.chars
+  for i,v in pairs( self.patternNames[self.xpos] ) do
+    gfx.x = X
+    gfx.y = (2+i) * fh
+    gfx.printf( "%s. %s", chars:sub(i,i), v )
+  end  
 end
 
 ------------------------------
@@ -1221,7 +1274,7 @@ function seq:forceCursorInRange(forceY)
 end
 
 function seq:computeSize()
-  self.fov.width = math.floor( ( gfx.w - self.cfg.nameSize ) / self.cellw )
+  self.fov.width = math.floor( ( gfx.w - self.cfg.nameSize - .99 * self.cellw ) / self.cellw ) - 1
   self.fov.height = math.floor( gfx.h / self.cellh ) - 3
   
   self.max_xpos = reaper.CountTracks(0) --self.fov.width
@@ -1297,6 +1350,25 @@ function seq:dragBlock(cx, cy)
   cp.all     = 0
   cp.ystart  = ystart
   cp.ystop   = yend
+end
+
+function seq:deleteRange(track, row)
+  local otherGUIDs = self.otherGUIDs
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  
+  -- Delete 
+  for i,v in pairs(otherGUIDs) do
+    if ( v[2] == reaper.GetTrack(0, track) ) then
+      local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
+      if ( math.floor( pos / rps + 0.001 ) == row ) then
+        reaper.DeleteTrackMediaItem(v[2], v[1])
+      end
+    end
+  end
+end
+
+function seq:delete()
+  self:deleteRange(self.xpos, self.ypos, 0, 0)
 end
 
 function seq:beginBlock()
@@ -1417,13 +1489,11 @@ local function updateLoop()
       modified = 1
       reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
       seq:delete()
-      seq:deleteNow()
     elseif ( inputs('delete2') ) then
       modified = 1
       reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
       seq:delete()
-      seq:deleteNow()
-      seq.ypos = seq.ypos + seq.advance      
+      seq.ypos = seq.ypos + seq.advance
     end
   
     reaper.defer(updateLoop)
@@ -1439,7 +1509,7 @@ local function Main()
   local xpos = wpos.x or 200
   local ypos = wpos.y or 200
   
-  --seq:loadColors("renoiseB")
+  seq:loadColors("renoiseB")
   seq:loadColors( "buzz" ) 
   seq:loadKeys( "buzz" )
   gfx.init("Sequencer", width, height, 0, xpos, ypos)
