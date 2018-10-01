@@ -4,9 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.03
-@screenshot 
-
+@version 0.04
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -27,6 +25,8 @@
 
 --[[
  * Changelog:
+ * v0.04 (2018-10-02)
+   + Added insert and delete functionality.
  * v0.03 (2018-10-01)
    + Made patterns per track rather than per project.
  * v0.02 (2018-10-01)
@@ -40,7 +40,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.03"
+scriptName = "Hackey Patterns v0.04"
 postMusic = 30
 
 seq             = {}
@@ -1066,6 +1066,9 @@ function seq:populateSequencer()
     local q = ystart
     local trackIdx = trackToIndex[v[2]]
     patterns[trackIdx][q] = guidToPatternIdx[trackIdx][i]
+    for q = ystart+1,yend do
+      patterns[trackIdx][q] = -1
+    end
   end
   
   self.patterns     = patterns
@@ -1101,8 +1104,8 @@ function seq:updateGUI()
   local fh            = self.cellh
   local ymax          = fov.height
 
-  xOrigin = 0
-  yOrigin = 0
+  local xOrigin = 0
+  local yOrigin = 0
   gfx.setfont(1, colors.patternFont, colors.patternFontSize)
   
   local xStart = 0
@@ -1178,6 +1181,12 @@ function seq:updateGUI()
     gfx.rect( xOrigin, yOrigin + fh * iy, fw, fh )
   end
   
+  -- Horizontal lines
+  for iy=1,ymax do
+    gfx.set( table.unpack( colors.inactive ) )
+    gfx.rect( xOrigin + 3,  yOrigin + (iy+1)*fh-1, fw * (xEnd-xStart+2)-3, 1 )
+  end 
+  
   -- Pattern names
   gfx.set( table.unpack( colors.textcolor ) )
   for ix=xStart,xEnd do
@@ -1185,8 +1194,15 @@ function seq:updateGUI()
       gfx.x = xOrigin + (ix+1)*fw + 3
       gfx.y = yOrigin + (iy+2)*fh
       if ( self.patterns[ix][iy] ) then
-        gfx.printf("%s", patternNames[ix+scrollx][patterns[ix+scrollx][iy+scrolly]])        
+        gfx.set( table.unpack( colors.linecolor5 ) )
+        gfx.rect( gfx.x-3, gfx.y, fw, fh )
+        if ( self.patterns[ix][iy] > 0 ) then
+          gfx.set( table.unpack( colors.textcolor ) )
+          gfx.printf("%s", patternNames[ix+scrollx][patterns[ix+scrollx][iy+scrolly]])
+        else
+        end
       else
+        gfx.set( table.unpack( colors.textcolor ) )
         gfx.printf("...")
       end
     end
@@ -1206,11 +1222,6 @@ function seq:updateGUI()
     gfx.printf( str )
   end
   
-  -- Horizontal lines
-  for iy=1,ymax do
-    gfx.set( table.unpack( colors.inactive ) )
-    gfx.rect( xOrigin + 3,  yOrigin + (iy+1)*fh-1, fw * (xEnd-xStart+2)-3, 1 )
-  end 
   
   -- Header lines
   gfx.set( table.unpack( colors.textcolor ) )
@@ -1222,7 +1233,7 @@ function seq:updateGUI()
   local X = gfx.w - self.cfg.nameSize + 5
   gfx.x = X
   gfx.y = fh
-  gfx.printf( "Patterns" )
+  gfx.printf( "Track patterns" )
   local chars = seq.chars
   for i,v in pairs( self.patternNames[self.xpos] ) do
     gfx.x = X
@@ -1357,18 +1368,101 @@ function seq:deleteRange(track, row)
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   
   -- Delete 
+  local cTrack = reaper.GetTrack(0, track)
   for i,v in pairs(otherGUIDs) do
-    if ( v[2] == reaper.GetTrack(0, track) ) then
+    if ( v[2] == cTrack ) then
       local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
       if ( math.floor( pos / rps + 0.001 ) == row ) then
         reaper.DeleteTrackMediaItem(v[2], v[1])
       end
     end
   end
+  
+  -- Automation items
+  local deletedAutomation
+  for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+    local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+    for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+      local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+      if ( math.floor( d_pos / rps + 0.001 ) == row ) then
+        --reaper.DeleteTrackMediaItem(v[2], v[1])
+        if not deletedAutomation then
+          --reaper.SelectAllMediaItems(0, false)
+          reaper.Main_OnCommand(40289, 0) -- Deselect all items
+          deletedAutomation = 1
+        end
+        reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 1, true)
+      else
+        reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 0, true)
+      end
+    end
+  end
+
+  if ( deletedAutomation ) then
+    reaper.Main_OnCommand(40006, 0) -- Delete automation items
+  end
 end
 
 function seq:delete()
   self:deleteRange(self.xpos, self.ypos, 0, 0)
+  
+  reaper.UpdateArrange()
+end
+
+function seq:backspace()
+  self:deleteRange(self.xpos, self.ypos, 0, 0)
+  self:insert(nil, self.ypos+1, -1)
+  
+  reaper.UpdateArrange()
+end
+
+function seq:insert(xpos, ypos, sign)
+  local cTrack = reaper.GetTrack(0, xpos or self.xpos)
+  local row = ypos or self.ypos
+  
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local delta = (sign or 1) * rps
+  
+  -- Media items
+  for i=0,reaper.CountMediaItems(0)-1 do
+    local mediaItem = reaper.GetMediaItem(0, i)
+    -- Only deal with media items on this track
+    if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
+      local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
+      if ( d_pos < postMusic ) then
+        if ( math.floor( d_pos / rps + 0.001 ) >= row ) then
+          reaper.SetMediaItemInfo_Value(mediaItem, "D_POSITION", d_pos + delta)
+        else
+          local d_len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")
+          if ( math.floor( (d_pos + d_len) / rps + 0.001 ) > row ) then
+            -- Grow/Shrink this one!
+            reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", d_len + delta)
+          end
+        end
+      end
+    end  
+  end
+  
+  -- Automation items
+  for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+    local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+    for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+      local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+      if ( d_pos < postMusic ) then
+        if ( math.floor( d_pos / rps + 0.001 ) >= row ) then
+          reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", d_pos + delta, true)
+        else
+          local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)
+          if ( math.floor( (d_pos + d_len) / rps + 0.001 ) > row ) then
+            -- Grow/Shrink this one!
+            reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", d_len + delta, true)
+          end
+        end
+      end
+    end
+  end
+  
+  reaper.UpdateArrange()
 end
 
 function seq:beginBlock()
@@ -1439,6 +1533,10 @@ local function updateLoop()
     elseif inputs('down') then
       seq.ypos = seq.ypos + 1
       seq:resetShiftSelect()
+    elseif inputs('insert') then
+      seq:insert()
+    elseif inputs('remove') then
+      seq:backspace()      
     elseif inputs('pgup') then
       seq.ypos = seq.ypos - seq.cfg.page
       seq:resetShiftSelect()
