@@ -1,2 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer"/>
+<index version="1" name="Hackey Sequencer" commit="ee19c4ad08018f2c154ea41a21fbc3165e776e83">
+  <category name="Sequencer">
+    <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs28 Hackey-Patterns\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs24 What is it?\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A lightweight sequencer plugin for REAPER 5.x and up.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Usage Hackey Patterns provides an alternative way for visualizing and manipulating timeline in REAPER.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 WARNING: THIS PLUGIN IS INCOMPLETE AND NOT READY FOR USE\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If you use this plugin and enjoy it let me/others know. If you run into any bugs and figure out a way to reproduce them, please open an issue on the plugin's github page {\field{\*\fldinst{HYPERLINK "https://github.com/JoepVanlier/Hackey-Trackey/issues"}}{\fldrslt{\ul
+here
+}}}
+. I would greatly appreciate it!\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Happy sequencin' :)\par}
+}
+]]></description>
+        <link rel="website">https://github.com/JoepVanlier/Hackey-Patterns</link>
+      </metadata>
+      <version name="0.04" author=": Joep Vanlier" time="2018-10-01T23:02:42Z">
+        <changelog><![CDATA[+ Added insert and delete functionality.]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/ee19c4ad08018f2c154ea41a21fbc3165e776e83/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+    </reapack>
+  </category>
+</index>
