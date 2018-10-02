@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.04
+@version 0.05
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,8 @@
 
 --[[
  * Changelog:
+ * v0.05 (2018-10-03)
+   + Started work on add pattern functionality. Still have to make sure that when patterns are deleted, the media item adjacent is also stretched to fill up the space.
  * v0.04 (2018-10-02)
    + Added insert and delete functionality.
  * v0.03 (2018-10-01)
@@ -40,7 +42,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.04"
+scriptName = "Hackey Patterns v0.05"
 postMusic = 30
 
 seq             = {}
@@ -72,6 +74,24 @@ seq.cp.ystop = -1
 seq.cp.all = 0
 
 seq.chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+function initCharMap()
+  seq.charCodes = {}
+  local j = 0
+  for i=48,57 do
+    seq.charCodes[i] = j
+    j = j + 1
+  end
+  for i=97,122 do
+    seq.charCodes[i] = j
+    j = j + 1
+  end
+  for i=65,90 do
+    seq.charCodes[i] = j
+    j = j + 1
+  end  
+end
+initCharMap()
 
 -- This block is straight up copied from the tracker for now. Will clean this up when the time comes.
 
@@ -879,8 +899,9 @@ end
 -- Find all MIDI items
 function seq:fetchPatterns()
   poolGUIDs = {}
-  otherGUIDs = {}
+  trackItems = {}
   
+  local c = 0
   for i=0,reaper.CountMediaItems(0)-1 do
     local mediaItem = reaper.GetMediaItem(0, i)
     local track = reaper.GetMediaItem_Track(mediaItem)
@@ -895,29 +916,31 @@ function seq:fetchPatterns()
       if ( loc >= postMusic ) then
         poolGUIDs[GUID] = { mediaItem, track, take }
       else
-        otherGUIDs[GUID] = { mediaItem, track, take }
+        trackItems[c] = { mediaItem, track, take, GUID }
+        c = c + 1
       end
     end
   end
   
   self.poolGUIDs = poolGUIDs
-  self.otherGUIDs = otherGUIDs
+  self.trackItems = trackItems
 end
   
 function seq:copyUnknownToPool()
-  local otherGUIDs = self.otherGUIDs
+  local trackItems = self.trackItems
   local poolGUIDs = self.poolGUIDs
 
   -- Check if there are any that aren't in the pool yet.
-  for i,v in pairs( otherGUIDs ) do
-    if ( not poolGUIDs[i] ) then
+  for i,v in pairs( trackItems ) do
+    local GUID = v[4]
+    if ( not poolGUIDs[GUID] ) then
       -- Duplicate these
       self:selectMediaItem(v[1])
       reaper.SetOnlyTrackSelected(v[2])
       reaper.Main_OnCommand(40698, 0) -- Copy selected items
       reaper.SetEditCurPos2(0, postMusic, false, false)
       reaper.Main_OnCommand(41072, 0) -- Paste pooled
-      poolGUIDs[i] = v
+      poolGUIDs[v[4]] = {v[1], v[2], v[3]}
       -- 40058 is paste, 41072 is paste pooled
     end
   end
@@ -1050,14 +1073,16 @@ function seq:populateSequencer()
   local trackToIndex  = self.trackToIndex
   
   -- Go over all the media items we found that weren't in the pool
-  --   otherGUIDs[GUID] = { mediaItem, track, take }
+  --   trackItems[i] = { mediaItem, track, take, GUID }
   --   guidToPatternIdx[i] = c
   for i=0,self.max_xpos-1 do
     patterns[i] = {}
   end
   local dy = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local guidToPatternIdx = self.guidToPatternIdx
-  for i,v in pairs(self.otherGUIDs) do
+  
+  for i,v in pairs(self.trackItems) do
+    local trackGUID = v[4]
     local pos = reaper.GetMediaItemInfo_Value(v[1], "D_POSITION")
     local len = reaper.GetMediaItemInfo_Value(v[1], "D_LENGTH")
 
@@ -1065,8 +1090,8 @@ function seq:populateSequencer()
     local yend = math.ceil((pos+len)/dy)
     local q = ystart
     local trackIdx = trackToIndex[v[2]]
-    patterns[trackIdx][q] = guidToPatternIdx[trackIdx][i]
-    for q = ystart+1,yend do
+    patterns[trackIdx][q] = guidToPatternIdx[trackIdx][trackGUID]
+    for q = ystart+1,yend-1 do
       patterns[trackIdx][q] = -1
     end
   end
@@ -1233,7 +1258,7 @@ function seq:updateGUI()
   local X = gfx.w - self.cfg.nameSize + 5
   gfx.x = X
   gfx.y = fh
-  gfx.printf( "Track patterns" )
+  gfx.printf( "Track patterns/items" )
   local chars = seq.chars
   for i,v in pairs( self.patternNames[self.xpos] ) do
     gfx.x = X
@@ -1364,19 +1389,22 @@ function seq:dragBlock(cx, cy)
 end
 
 function seq:deleteRange(track, row)
-  local otherGUIDs = self.otherGUIDs
+  local trackItems = self.trackItems
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   
   -- Delete 
   local cTrack = reaper.GetTrack(0, track)
-  for i,v in pairs(otherGUIDs) do
+  for i,v in pairs(trackItems) do
     if ( v[2] == cTrack ) then
       local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
-      if ( math.floor( pos / rps + 0.001 ) == row ) then
+      if ( math.floor( pos / rps + 0.0001 ) == row ) then
         reaper.DeleteTrackMediaItem(v[2], v[1])
       end
     end
   end
+  
+  -- TO DO: Check if there is a previous pooled item. Lengthen it to what it was. TODO
+  
   
   -- Automation items
   local deletedAutomation
@@ -1384,7 +1412,7 @@ function seq:deleteRange(track, row)
     local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
     for i=0,reaper.CountAutomationItems(trackEnv)-1 do
       local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
-      if ( math.floor( d_pos / rps + 0.001 ) == row ) then
+      if ( math.floor( d_pos / rps + 0.0001 ) == row ) then
         --reaper.DeleteTrackMediaItem(v[2], v[1])
         if not deletedAutomation then
           --reaper.SelectAllMediaItems(0, false)
@@ -1430,11 +1458,11 @@ function seq:insert(xpos, ypos, sign)
     if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
       local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
       if ( d_pos < postMusic ) then
-        if ( math.floor( d_pos / rps + 0.001 ) >= row ) then
+        if ( math.floor( d_pos / rps + 0.0001 ) >= row ) then
           reaper.SetMediaItemInfo_Value(mediaItem, "D_POSITION", d_pos + delta)
         else
           local d_len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")
-          if ( math.floor( (d_pos + d_len) / rps + 0.001 ) > row ) then
+          if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) > row ) then
             -- Grow/Shrink this one!
             reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", d_len + delta)
           end
@@ -1449,11 +1477,11 @@ function seq:insert(xpos, ypos, sign)
     for i=0,reaper.CountAutomationItems(trackEnv)-1 do
       local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
       if ( d_pos < postMusic ) then
-        if ( math.floor( d_pos / rps + 0.001 ) >= row ) then
+        if ( math.floor( d_pos / rps + 0.0001 ) >= row ) then
           reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", d_pos + delta, true)
         else
           local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)
-          if ( math.floor( (d_pos + d_len) / rps + 0.001 ) > row ) then
+          if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) > row ) then
             -- Grow/Shrink this one!
             reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", d_len + delta, true)
           end
@@ -1503,6 +1531,100 @@ function seq:resetBlock()
   cp.all     =  0
   cp.xstart  = -1
   cp.xstop   = -1
+end
+
+function seq:terminateAt(track, row)
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local cTrack = reaper.GetTrack(0, track or self.xpos)
+  
+  -- Media items
+  for i=0,reaper.CountMediaItems(0)-1 do
+    local mediaItem = reaper.GetMediaItem(0, i)
+    -- Only deal with media items on this track
+    if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
+      local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
+      if ( d_pos < postMusic ) then
+        if ( math.floor( d_pos / rps + 0.0001 ) < row ) then
+          local d_len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")
+          if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) >= row ) then
+            reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", row*rps - d_pos, true)
+          end
+        end
+      end
+    end  
+  end
+  
+  -- Automation items
+  for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+    local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+    for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+      local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+      if ( d_pos < postMusic ) then
+        if ( math.floor( d_pos / rps + 0.0001 ) < row ) then
+          local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)
+          if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) >= row ) then
+            -- Grow/Shrink this one!
+            reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", row*rps - d_pos, true)
+          end
+        end
+      end
+    end
+  end
+  
+end
+
+function seq:findNextItem(track, row)
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local cTrack = reaper.GetTrack(0, track)
+
+  local minDist = 10000000000000
+  local item = nil
+  for i=0,reaper.CountMediaItems(0)-1 do
+    local mediaItem = reaper.GetMediaItem(0, i)
+    -- Only deal with media items on this track
+    if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
+      local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
+      if ( d_pos < postMusic ) then
+        if ( math.floor( d_pos / rps + 0.0001 ) > row ) then
+          if ( d_pos < minDist ) then
+            minDist = d_pos - row*rps
+            item = mediaItem
+          end
+        end
+      end
+    end  
+  end
+
+  return minDist,item
+end
+
+function seq:addItem( idx )
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  
+  -- Actually paste the new pattern
+  local GUID = self.idxToGUID[self.xpos][ idx ]
+  local v = self.poolGUIDs[ GUID ]
+
+  if ( v ) then
+    -- Delete what we are overwriting
+    self:deleteRange(self.xpos, self.ypos, 0, 0)
+
+    -- Shorten what we are cutting into
+    seq:terminateAt(self.xpos, self.ypos)
+
+    self:selectMediaItem(v[1])
+    reaper.SetOnlyTrackSelected(v[2])
+    reaper.Main_OnCommand(40698, 0) -- Copy selected items
+    reaper.SetEditCurPos2(0, self.ypos*rps, false, false)
+    -- Check how much space we have before pasting
+    local mindist = self:findNextItem(self.xpos, self.ypos)
+    reaper.Main_OnCommand(41072, 0) -- Paste pooled
+    local mediaItem = reaper.GetSelectedMediaItem(0, 0)
+    local len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")
+    if ( mindist < len ) then
+      reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", mindist)
+    end
+  end
 end
 
 local function mouseStatus()
@@ -1592,7 +1714,11 @@ local function updateLoop()
       reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
       seq:delete()
       seq.ypos = seq.ypos + seq.advance
+    elseif ( seq.charCodes[lastChar] ) then
+      seq:addItem( seq.charCodes[ lastChar ] )
+      lastChar = 0
     end
+    
   
     reaper.defer(updateLoop)
   else
