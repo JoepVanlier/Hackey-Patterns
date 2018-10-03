@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.10
+@version 0.11
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,8 @@
 
 --[[
  * Changelog:
+ * v0.11 (2018-10-03)
+   + Worked on automation.
  * v0.10 (2018-10-03)
    + Fix y scrolling issue.
  * v0.09 (2018-10-03)
@@ -53,8 +55,8 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.10"
-postMusic = 30
+scriptName = "Hackey Patterns v0.11"
+postMusic = 500
 
 seq             = {}
 seq.fov         = {}
@@ -68,9 +70,10 @@ seq.res         = 16
 seq.patterns    = {}
 
 seq.cfg = {}
-seq.cfg.nChars    = 9
-seq.cfg.nameSize  = 180
-seq.cfg.page      = 4
+seq.cfg.nChars        = 9
+seq.cfg.nameSize      = 180
+seq.cfg.page          = 4
+seq.cfg.automation    = 1
 
 seq.advance       = 1
 
@@ -1471,28 +1474,30 @@ function seq:deleteRange(track, row)
     end
   end
   
-  -- Automation items
-  local deletedAutomation
-  for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
-    local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
-    for i=0,reaper.CountAutomationItems(trackEnv)-1 do
-      local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
-      if ( math.floor( d_pos / rps + 0.0001 ) == row ) then
-        --reaper.DeleteTrackMediaItem(v[2], v[1])
-        if not deletedAutomation then
-          --reaper.SelectAllMediaItems(0, false)
-          reaper.Main_OnCommand(40289, 0) -- Deselect all items
-          deletedAutomation = 1
+  if ( self.cfg.automation == 1 ) then
+    -- Automation items
+    local deletedAutomation
+    for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+      local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+      for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+        local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+        if ( math.floor( d_pos / rps + 0.0001 ) == row ) then
+          --reaper.DeleteTrackMediaItem(v[2], v[1])
+          if not deletedAutomation then
+            --reaper.SelectAllMediaItems(0, false)
+            reaper.Main_OnCommand(40289, 0) -- Deselect all items
+            deletedAutomation = 1
+          end
+          reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 1, true)
+        else
+          reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 0, true)
         end
-        reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 1, true)
-      else
-        reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 0, true)
       end
     end
-  end
-
-  if ( deletedAutomation ) then
-    reaper.Main_OnCommand(40006, 0) -- Delete automation items
+  
+    if ( deletedAutomation ) then
+      reaper.Main_OnCommand(40006, 0) -- Delete automation items
+    end
   end
   
   seq:updateData()
@@ -1546,18 +1551,20 @@ function seq:insert(xpos, ypos, sign)
   end
   
   -- Automation items
-  for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
-    local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
-    for i=0,reaper.CountAutomationItems(trackEnv)-1 do
-      local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
-      if ( d_pos < postMusic ) then
-        if ( math.floor( d_pos / rps + 0.0001 ) >= row ) then
-          reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", d_pos + delta, true)
-        else
-          local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)
-          if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) > row ) then
-            -- Grow/Shrink this one!
-            reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", d_len + delta, true)
+  if ( self.cfg.automation == 1 ) then
+    for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+      local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+      for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+        local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+        if ( d_pos < postMusic ) then
+          if ( math.floor( d_pos / rps + 0.0001 ) >= row ) then
+            reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", d_pos + delta, true)
+          else
+            local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)
+            if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) > row ) then
+              -- Grow/Shrink this one!
+              reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", d_len + delta, true)
+            end
           end
         end
       end
@@ -1629,22 +1636,23 @@ function seq:terminateAt(track, row)
   end
   
   -- Automation items
-  for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
-    local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
-    for i=0,reaper.CountAutomationItems(trackEnv)-1 do
-      local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
-      if ( d_pos < postMusic ) then
-        if ( math.floor( d_pos / rps + 0.0001 ) < row ) then
-          local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)
-          if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) >= row ) then
-            -- Grow/Shrink this one!
-            reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", row*rps - d_pos, true)
+  if ( self.cfg.automation == 1 ) then
+    for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+      local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+      for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+        local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+        if ( d_pos < postMusic ) then
+          if ( math.floor( d_pos / rps + 0.0001 ) < row ) then
+            local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)
+            if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) >= row ) then
+              -- Grow/Shrink this one!
+              reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", row*rps - d_pos, true)
+            end
           end
         end
       end
     end
   end
-  
 end
 
 function seq:findNextItem(track, row)
@@ -1686,17 +1694,43 @@ function seq:addItem( idx )
     -- Shorten what we are cutting into
     seq:terminateAt(self.xpos, self.ypos)
 
+    -- Deselect everything, select our track and media item of interest
+    --reaper.Main_OnCommand(40289, 0) -- Deselect items
+    local m_pos = reaper.GetMediaItemInfo_Value(v[1], "D_POSITION")
     self:selectMediaItem(v[1])
-    reaper.SetOnlyTrackSelected(v[2])
+    local curTrack = v[2]
+    reaper.SetOnlyTrackSelected(curTrack)
+    
+    -- Copy and move to where we want to paste
     reaper.Main_OnCommand(40698, 0) -- Copy selected items
     reaper.SetEditCurPos2(0, self.ypos*rps, false, false)
+    
     -- Check how much space we have before pasting
     local mindist = self:findNextItem(self.xpos, self.ypos)
+    
+    -- Paste stuff
     reaper.Main_OnCommand(41072, 0) -- Paste pooled
     local mediaItem = reaper.GetSelectedMediaItem(0, 0)
     local len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")
     if ( mindist < len ) then
-      reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", mindist)
+      len = mindist
+    end
+    reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", len)
+    
+    if ( self.cfg.automation == 1 ) then
+      -- Copy automation items as well
+      for envIdx = 0,reaper.CountTrackEnvelopes(curTrack)-1 do
+        local env = reaper.GetTrackEnvelope(curTrack, envIdx)
+        
+        -- See if there's an automation item to go with this item.
+        for i=0,reaper.CountAutomationItems(env)-1 do
+          local e_pos = reaper.GetSetAutomationItemInfo(env, i, "D_POSITION", 0, false)
+          if ( e_pos == m_pos ) then
+            local poolidx = reaper.GetSetAutomationItemInfo(env, i, "D_POOL_ID", 0, false)
+            reaper.InsertAutomationItem(env, poolidx, self.ypos*rps, len)
+          end
+        end
+      end
     end
   end
 end
