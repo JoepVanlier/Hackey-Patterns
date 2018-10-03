@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.08
+@version 0.10
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,10 @@
 
 --[[
  * Changelog:
+ * v0.10 (2018-10-03)
+   + Fix y scrolling issue.
+ * v0.09 (2018-10-03)
+   + Worked more on automation integration.
  * v0.08 (2018-10-03)
    + Added mending to insert operator.
  * v0.07 (2018-10-03)
@@ -49,7 +53,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.07"
+scriptName = "Hackey Patterns v0.10"
 postMusic = 30
 
 seq             = {}
@@ -1252,10 +1256,10 @@ function seq:updateGUI()
     for iy=0,ymax do
       gfx.x = xOrigin + (ix+1)*fw + 3
       gfx.y = yOrigin + (iy+2)*fh
-      if ( self.patterns[ix][iy] ) then
+      if ( self.patterns[ix][iy+scrolly] ) then
         gfx.set( table.unpack( colors.linecolor5 ) )
         gfx.rect( gfx.x-3, gfx.y, fw, fh )
-        if ( self.patterns[ix][iy] > 0 ) then
+        if ( self.patterns[ix][iy+scrolly] > 0 ) then
           gfx.set( table.unpack( colors.textcolor ) )
           gfx.printf("%s", patternNames[ix+scrollx][patterns[ix+scrollx][iy+scrolly]])
         else
