@@ -26,7 +26,8 @@
 --[[
  * Changelog:
  * v0.06 (2018-10-03)
-   + Stretch last media item.
+   + Stretch last media item (mending).
+   + Started work on processing automation properly.
  * v0.05 (2018-10-03)
    + Started work on add pattern functionality. Still have to make sure that when patterns are deleted, the media item adjacent is also stretched to fill up the space.
  * v0.04 (2018-10-02)
