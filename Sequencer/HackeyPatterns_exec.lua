@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.06
+@version 0.07
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,8 @@
 
 --[[
  * Changelog:
+ * v0.07 (2018-10-03)
+   + Added mending to backspace operator.
  * v0.06 (2018-10-03)
    + Stretch last media item (mending).
    + Started work on processing automation properly.
@@ -45,7 +47,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.06"
+scriptName = "Hackey Patterns v0.07"
 postMusic = 30
 
 seq             = {}
@@ -1503,6 +1505,9 @@ end
 function seq:backspace()
   self:deleteRange(self.xpos, self.ypos, 0, 0)
   self:insert(nil, self.ypos+1, -1)
+  if ( self.ypos > 0 ) then
+    seq:mend(self.xpos, self.ypos-1)
+  end  
   
   reaper.UpdateArrange()
 end
