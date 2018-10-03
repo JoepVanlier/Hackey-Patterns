@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.07
+@version 0.08
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,8 @@
 
 --[[
  * Changelog:
+ * v0.08 (2018-10-03)
+   + Added mending to insert operator.
  * v0.07 (2018-10-03)
    + Added mending to backspace operator.
  * v0.06 (2018-10-03)
@@ -1725,6 +1727,9 @@ local function updateLoop()
       seq:resetShiftSelect()
     elseif inputs('insert') then
       seq:insert()
+      if ( seq.ypos > 0 ) then
+        seq:mend(seq.xpos, seq.ypos-1)
+      end
     elseif inputs('remove') then
       seq:backspace()      
     elseif inputs('pgup') then
