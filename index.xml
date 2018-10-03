@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="09a5f2281f8b63896ed8e53e793d253ed557911a">
+<index version="1" name="Hackey Sequencer" commit="dca9f17829c1221b09ff5a0145de1cc7ef47fd25">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -28,6 +28,10 @@ here
       <version name="0.05" author=": Joep Vanlier" time="2018-10-02T23:47:30Z">
         <changelog><![CDATA[+ Started work on add pattern functionality. Still have to make sure that when patterns are deleted, the media item adjacent is also stretched to fill up the space.]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/09a5f2281f8b63896ed8e53e793d253ed557911a/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.06" author=": Joep Vanlier" time="2018-10-03T17:16:20Z">
+        <changelog><![CDATA[+ Stretch last media item.]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/04f3e15e5a05042c6e1651888b7dca0bcbf7cd11/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
