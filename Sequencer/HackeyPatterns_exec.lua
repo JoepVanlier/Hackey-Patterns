@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.05
+@version 0.06
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,8 @@
 
 --[[
  * Changelog:
+ * v0.06 (2018-10-03)
+   + Stretch last media item.
  * v0.05 (2018-10-03)
    + Started work on add pattern functionality. Still have to make sure that when patterns are deleted, the media item adjacent is also stretched to fill up the space.
  * v0.04 (2018-10-02)
@@ -42,7 +44,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.05"
+scriptName = "Hackey Patterns v0.06"
 postMusic = 30
 
 seq             = {}
@@ -896,16 +898,31 @@ function seq:selectMediaItem(item)
   reaper.SetMediaItemSelected(item, true)
 end
 
+function seq:uniqueMIDI(item)
+  --41613  Item: Remove active take from MIDI source data pool (AKA un-pool, un-ghost, make unique)
+  reaper.SelectAllMediaItems(0, false)
+  reaper.SetMediaItemSelected(item, true)
+  reaper.Main_OnCommand(41613, 0) -- Copy selected items  
+end
+
+function seq:testWillBeUnique()
+  
+end
+
 -- Find all MIDI items
 function seq:fetchPatterns()
   poolGUIDs = {}
   trackItems = {}
   
   local c = 0
+  local maxloc = {}
+  for i=0,reaper.CountTracks(0)-1 do
+    local track = reaper.GetTrack(0, i)
+    maxloc[track] = postMusic
+  end
   for i=0,reaper.CountMediaItems(0)-1 do
     local mediaItem = reaper.GetMediaItem(0, i)
     local track = reaper.GetMediaItem_Track(mediaItem)
-    
     local take = reaper.GetActiveTake(mediaItem)
     
     -- Is it a midi take?
@@ -915,6 +932,9 @@ function seq:fetchPatterns()
       local loc = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
       if ( loc >= postMusic ) then
         poolGUIDs[GUID] = { mediaItem, track, take }
+        if ( loc > maxloc[track] ) then
+          maxloc[track] = loc
+        end
       else
         trackItems[c] = { mediaItem, track, take, GUID }
         c = c + 1
@@ -924,6 +944,7 @@ function seq:fetchPatterns()
   
   self.poolGUIDs = poolGUIDs
   self.trackItems = trackItems
+  self.maxloc = maxloc
 end
   
 function seq:copyUnknownToPool()
@@ -931,21 +952,29 @@ function seq:copyUnknownToPool()
   local poolGUIDs = self.poolGUIDs
 
   -- Check if there are any that aren't in the pool yet.
+  local maxloc = self.maxloc
   for i,v in pairs( trackItems ) do
     local GUID = v[4]
     if ( not poolGUIDs[GUID] ) then
       -- Duplicate these
       self:selectMediaItem(v[1])
-      reaper.SetOnlyTrackSelected(v[2])
+      local cTrack = v[2]
+      reaper.SetOnlyTrackSelected(cTrack)
       reaper.Main_OnCommand(40698, 0) -- Copy selected items
-      reaper.SetEditCurPos2(0, postMusic, false, false)
+      reaper.SetEditCurPos2(0, maxloc[cTrack], false, false)
       reaper.Main_OnCommand(41072, 0) -- Paste pooled
-      poolGUIDs[v[4]] = {v[1], v[2], v[3]}
+      poolGUIDs[v[4]] = {v[1], cTrack, v[3]}
+      if ( maxloc[cTrack] ) then
+        local nloc = maxloc[cTrack] + reaper.GetMediaItemInfo_Value(v[1], "D_LENGTH")
+        maxloc[cTrack] = nloc        
+      end
+      
       -- 40058 is paste, 41072 is paste pooled
     end
   end
   
   self.poolGUIDs = poolGUIDs
+  self.maxloc = maxloc
 end
 
 -- Index the GUID
@@ -1388,6 +1417,36 @@ function seq:dragBlock(cx, cy)
   cp.ystop   = yend
 end
 
+function seq:mend(track, row)
+  local trackItems = self.trackItems
+  local poolGUIDs = self.poolGUIDs
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  
+  -- Figure out how long we can make it...
+  local mindist = self:findNextItem(track, row)
+
+  -- Lengthen the indexed midi item
+  local cTrack = reaper.GetTrack(0, track)
+  for i,v in pairs(trackItems) do
+    if ( v[2] == cTrack ) then
+      local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
+      local len = reaper.GetMediaItemInfo_Value( v[1], "D_LENGTH" )
+      if ( math.floor( pos / rps + 0.0001 ) <= row and math.floor( (pos+len)/rps + 0.0001 ) >= row ) then
+        local GUID = v[4]
+        local poolItem = poolGUIDs[GUID]
+        if ( poolItem ) then
+          local itemLen = reaper.GetMediaItemInfo_Value( poolItem[1], "D_LENGTH" )
+          local maxLen = (row*rps - pos) + mindist
+          if ( itemLen > maxLen ) then
+            itemLen = maxLen
+          end
+          reaper.SetMediaItemInfo_Value( v[1], "D_LENGTH", itemLen )
+        end
+      end
+    end
+  end
+end
+
 function seq:deleteRange(track, row)
   local trackItems = self.trackItems
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
@@ -1402,9 +1461,6 @@ function seq:deleteRange(track, row)
       end
     end
   end
-  
-  -- TO DO: Check if there is a previous pooled item. Lengthen it to what it was. TODO
-  
   
   -- Automation items
   local deletedAutomation
@@ -1429,11 +1485,17 @@ function seq:deleteRange(track, row)
   if ( deletedAutomation ) then
     reaper.Main_OnCommand(40006, 0) -- Delete automation items
   end
+  
+  seq:updateData()
 end
 
 function seq:delete()
   self:deleteRange(self.xpos, self.ypos, 0, 0)
+  reaper.UpdateArrange()
   
+  if ( self.ypos > 0 ) then
+    seq:mend(self.xpos, self.ypos-1)
+  end
   reaper.UpdateArrange()
 end
 
