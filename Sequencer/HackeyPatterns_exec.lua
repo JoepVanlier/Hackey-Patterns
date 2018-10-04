@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.11
+@version 0.12
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,9 @@
 
 --[[
  * Changelog:
+ * v0.12 (2018-10-04)
+   + Worked on pattern renaming.
+   + Started work on mouse actions.
  * v0.11 (2018-10-03)
    + Worked on automation.
  * v0.10 (2018-10-03)
@@ -55,7 +58,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.11"
+scriptName = "Hackey Patterns v0.12"
 postMusic = 500
 
 seq             = {}
@@ -68,6 +71,7 @@ seq.xpos        = 0
 seq.ypos        = 0
 seq.res         = 16
 seq.patterns    = {}
+seq.renaming    = 0
 
 seq.cfg = {}
 seq.cfg.nChars        = 9
@@ -1170,8 +1174,8 @@ function seq:updateGUI()
   local fh            = self.cellh
   local ymax          = fov.height
 
-  local xOrigin = 0
-  local yOrigin = 0
+  local xOrigin       = 0
+  local yOrigin       = 0
   gfx.setfont(1, colors.patternFont, colors.patternFontSize)
   
   local xStart = 0
@@ -1259,11 +1263,15 @@ function seq:updateGUI()
     for iy=0,ymax do
       gfx.x = xOrigin + (ix+1)*fw + 3
       gfx.y = yOrigin + (iy+2)*fh
-      if ( self.patterns[ix][iy+scrolly] ) then
+      if ( self.patterns[ix+scrollx][iy+scrolly] ) then
         gfx.set( table.unpack( colors.linecolor5 ) )
         gfx.rect( gfx.x-3, gfx.y, fw, fh )
-        if ( self.patterns[ix][iy+scrolly] > 0 ) then
-          gfx.set( table.unpack( colors.textcolor ) )
+        if ( self.patterns[ix+scrollx][iy+scrolly] > 0 ) then
+          if ( self.renaming == 1 and self.xpos == (ix+scrollx) and self.ypos == (iy+scrolly) ) then
+            gfx.set( table.unpack( colors.changed ) )
+          else
+            gfx.set( table.unpack( colors.textcolor ) )          
+          end
           gfx.printf("%s", patternNames[ix+scrollx][patterns[ix+scrollx][iy+scrolly]])
         else
         end
@@ -1735,6 +1743,46 @@ function seq:addItem( idx )
   end
 end
 
+function seq:updateMidiName(inGUID, name)
+  for i=0,reaper.CountMediaItems(0)-1 do
+    local mediaItem = reaper.GetMediaItem(0, i)
+    local take = reaper.GetActiveTake(mediaItem)
+    if ( reaper.TakeIsMIDI(take) ) then
+      local retval, GUID = reaper.BR_GetMidiTakePoolGUID(take)
+      if ( inGUID == GUID ) then
+        reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", name, true)
+      end
+    end
+  end
+end
+
+function seq:rename(track, row)
+  -- Media items
+  local name, GUID
+  local cTrack = reaper.GetTrack(0, track)
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  
+  for i=0,reaper.CountMediaItems(0)-1 do
+    local mediaItem = reaper.GetMediaItem(0, i)
+    -- Only deal with media items on this track
+    if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
+      local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
+      if ( d_pos < postMusic ) then
+        if ( math.floor( d_pos / rps + 0.0001 ) == row ) then
+          local take = reaper.GetActiveTake(mediaItem)
+          if ( reaper.TakeIsMIDI(take) ) then
+            local retval
+            retval, GUID = reaper.BR_GetMidiTakePoolGUID(take)
+            retval, name = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
+          end
+        end
+      end
+    end
+  end
+
+  return GUID, name
+end
+
 local function mouseStatus()
   local leftbutton  = gfx.mouse_cap & 1
   local rightbutton = gfx.mouse_cap & 2
@@ -1744,92 +1792,161 @@ local function mouseStatus()
   return leftbutton, rightbutton
 end
 
+function seq:processMouse()
+  local fw            = self.cellw
+  local fh            = self.cellh
+  local fov           = self.fov
+  local scrollx       = fov.scrollx
+  local scrolly       = fov.scrolly
+  local ymax          = fov.height
+  local xOrigin       = 0
+  local yOrigin       = 0
+  local xEnd          = fov.width
+  
+  Inew = math.floor( gfx.mouse_x / fw ) + scrollx
+  Jnew = math.floor( gfx.mouse_y / fh ) + scrolly
+  
+  return Inew, Jnew
+end
+
 local function updateLoop()
   prevChar = lastChar
   lastChar = gfx.getchar()
   seq:updateData()
   seq:updateGUI()
   
-  if lastChar ~= -1 then
-    if inputs('left') then
-      seq.xpos = seq.xpos - 1
-      seq:resetShiftSelect()
-    elseif inputs('right') then
-      seq.xpos = seq.xpos + 1
-      seq:resetShiftSelect()
-    elseif inputs('up') then
-      seq.ypos = seq.ypos - 1
-      seq:resetShiftSelect()
-    elseif inputs('down') then
-      seq.ypos = seq.ypos + 1
-      seq:resetShiftSelect()
-    elseif inputs('insert') then
-      seq:insert()
-      if ( seq.ypos > 0 ) then
-        seq:mend(seq.xpos, seq.ypos-1)
+  local left, right = mouseStatus()
+  if ( left == 1 ) then
+    seq:processMouse()
+
+    if ( Inew and Jnew ) then        
+      -- Move the cursor pos on initial click
+      if ( seq.lastleft == 0 ) then
+        --seq:resetShiftSelect()
+        --seq:dragBlock(Inew+fov.scrollx, Jnew+fov.scrolly)
+        seq.xpos = Inew - 1
+        seq.ypos = Jnew - 2
+        seq:forceCursorInRange()
+      else
+        -- Change selection if it wasn't the initial click
+        --seq:dragBlock(Inew+fov.scrollx, Jnew+fov.scrolly)
       end
-    elseif inputs('remove') then
-      seq:backspace()      
-    elseif inputs('pgup') then
-      seq.ypos = seq.ypos - seq.cfg.page
-      seq:resetShiftSelect()
-    elseif inputs('pgdown') then
-      seq.ypos = seq.ypos + seq.cfg.page
-      seq:resetShiftSelect()    
-    elseif inputs('shiftleft') then
-      seq:dragBlock()
-      seq.xpos = seq.xpos - 1
-      seq:forceCursorInRange()
-      seq:dragBlock()
-    elseif inputs('shiftright') then
-      seq:dragBlock()
-      seq.xpos = seq.xpos + 1
-      seq:forceCursorInRange()
-      seq:dragBlock()
-    elseif inputs('shiftup') then
-      seq:dragBlock()
-      seq.ypos = seq.ypos - 1
-      seq:forceCursorInRange()
-      seq:dragBlock()
-    elseif inputs('shiftdown') then
-      seq:dragBlock()
-      seq.ypos = seq.ypos + 1
-      seq:forceCursorInRange()
-      seq:dragBlock()
-    elseif inputs('shiftpgdn') then
-      seq:dragBlock()
-      seq.ypos = seq.ypos + seq.cfg.page
-      seq:forceCursorInRange()
-      seq:dragBlock()
-    elseif inputs('shiftpgup') then
-      seq:dragBlock()
-      seq.ypos = seq.ypos - seq.cfg.page
-      seq:forceCursorInRange()
-      seq:dragBlock()
-    elseif inputs('shifthome') then
-      seq:dragBlock()
-      seq.ypos = 0
-      seq:forceCursorInRange()
-      seq:dragBlock()
-    elseif inputs('shiftend') then
-      seq:dragBlock()
-      seq.ypos = seq.rows
-      seq:forceCursorInRange()
-      seq:dragBlock()
-    elseif ( inputs('delete') ) then
-      modified = 1
-      reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
-      seq:delete()
-    elseif ( inputs('delete2') ) then
-      modified = 1
-      reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
-      seq:delete()
-      seq.ypos = seq.ypos + seq.advance
-    elseif ( seq.charCodes[lastChar] ) then
-      seq:addItem( seq.charCodes[ lastChar ] )
-      lastChar = 0
     end
     
+    seq.lastleft = 1
+  else
+    seq.lastleft = 0
+  end
+  
+  if lastChar ~= -1 then
+    if ( seq.renaming == 0 ) then
+      if inputs('left') then
+        seq.xpos = seq.xpos - 1
+        seq:resetShiftSelect()
+      elseif inputs('right') then
+        seq.xpos = seq.xpos + 1
+        seq:resetShiftSelect()
+      elseif inputs('up') then
+        seq.ypos = seq.ypos - 1
+        seq:resetShiftSelect()
+      elseif inputs('down') then
+        seq.ypos = seq.ypos + 1
+        seq:resetShiftSelect()
+      elseif inputs('insert') then
+        seq:insert()
+        if ( seq.ypos > 0 ) then
+          seq:mend(seq.xpos, seq.ypos-1)
+        end
+      elseif inputs('remove') then
+        seq:backspace()      
+      elseif inputs('pgup') then
+        seq.ypos = seq.ypos - seq.cfg.page
+        seq:resetShiftSelect()
+      elseif inputs('pgdown') then
+        seq.ypos = seq.ypos + seq.cfg.page
+        seq:resetShiftSelect()    
+      elseif inputs('shiftleft') then
+        seq:dragBlock()
+        seq.xpos = seq.xpos - 1
+        seq:forceCursorInRange()
+        seq:dragBlock()
+      elseif inputs('shiftright') then
+        seq:dragBlock()
+        seq.xpos = seq.xpos + 1
+        seq:forceCursorInRange()
+        seq:dragBlock()
+      elseif inputs('shiftup') then
+        seq:dragBlock()
+        seq.ypos = seq.ypos - 1
+        seq:forceCursorInRange()
+        seq:dragBlock()
+      elseif inputs('shiftdown') then
+        seq:dragBlock()
+        seq.ypos = seq.ypos + 1
+        seq:forceCursorInRange()
+        seq:dragBlock()
+      elseif inputs('shiftpgdn') then
+        seq:dragBlock()
+        seq.ypos = seq.ypos + seq.cfg.page
+        seq:forceCursorInRange()
+        seq:dragBlock()
+      elseif inputs('shiftpgup') then
+        seq:dragBlock()
+        seq.ypos = seq.ypos - seq.cfg.page
+        seq:forceCursorInRange()
+        seq:dragBlock()
+      elseif inputs('shifthome') then
+        seq:dragBlock()
+        seq.ypos = 0
+        seq:forceCursorInRange()
+        seq:dragBlock()
+      elseif inputs('shiftend') then
+        seq:dragBlock()
+        seq.ypos = seq.rows
+        seq:forceCursorInRange()
+        seq:dragBlock()
+      elseif inputs('rename') then
+        local GUID, name = seq:rename(seq.xpos, seq.ypos)
+        if ( GUID ) then
+          seq.GUID = GUID
+          seq.oldMidiName = name
+          seq.midiName = name
+          seq.renaming = 1
+        end
+      elseif ( inputs('delete') ) then
+        modified = 1
+        reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
+        seq:delete()
+      elseif ( inputs('delete2') ) then
+        modified = 1
+        reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
+        seq:delete()
+        seq.ypos = seq.ypos + seq.advance
+      elseif ( seq.charCodes[lastChar] ) then
+        seq:addItem( seq.charCodes[ lastChar ] )
+        lastChar = 0
+      end
+    elseif ( seq.renaming == 1 ) then
+      -- Renaming pattern
+      if inputs( 'enter' ) then
+        seq.renaming = 0
+      elseif inputs( 'escape' ) then
+        seq.midiName = seq.oldMidiName
+        seq:updateMidiName(seq.GUID, seq.midiName)
+        seq.renaming = 0
+      elseif inputs( 'remove' ) then
+        seq.midiName = seq.midiName:sub(1, seq.midiName:len()-1)
+        seq:updateMidiName(seq.GUID, seq.midiName)
+      else    
+        if ( pcall( function () string.char(lastChar) end ) ) then
+          if ( lastChar > 0 ) then
+            local str = string.char( lastChar )
+            seq.midiName = string.format( '%s%s', seq.midiName, str )
+            seq:updateMidiName(seq.GUID, seq.midiName)
+          end
+        end
+      end
+    end
   
     reaper.defer(updateLoop)
   else
@@ -1846,7 +1963,7 @@ local function Main()
   
   seq:loadColors("renoiseB")
   seq:loadColors( "buzz" ) 
-  seq:loadKeys( "buzz" )
+  seq:loadKeys( "default" )
   gfx.init("Sequencer", width, height, 0, xpos, ypos)
   seq:computeSize()
   
