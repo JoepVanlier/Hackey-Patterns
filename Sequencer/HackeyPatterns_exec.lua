@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.13
+@version 0.14
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,8 @@
 
 --[[
  * Changelog:
+ * v0.14 (2018-10-06)
+   + Middle mouse uniqueifies a pattern (un-ghost/un-pool).
  * v0.13 (2018-10-06)
    + Added MUTE/SOLO options.
    + Improved rendering (no lines in continuous items.
@@ -79,6 +81,8 @@ seq.ypos        = 0
 seq.res         = 16
 seq.patterns    = {}
 seq.renaming    = 0
+
+seq.posList = {}
 
 seq.cfg = {}
 seq.cfg.nChars        = 9
@@ -917,17 +921,69 @@ end
 
 
 -- Prep process
-
 function seq:selectMediaItem(item)
   reaper.SelectAllMediaItems(0, false)
   reaper.SetMediaItemSelected(item, true)
 end
 
-function seq:uniqueMIDI(item)
+function seq:uniqueMIDI(track, row)
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+
   --41613  Item: Remove active take from MIDI source data pool (AKA un-pool, un-ghost, make unique)
   reaper.SelectAllMediaItems(0, false)
-  reaper.SetMediaItemSelected(item, true)
-  reaper.Main_OnCommand(41613, 0) -- Copy selected items  
+
+  local cTrack = reaper.GetTrack(0, track)
+  for i,v in pairs(trackItems) do
+    if ( v[2] == cTrack ) then
+      local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
+      if ( math.floor( pos / rps + 0.0001 ) == row ) then
+        reaper.SetMediaItemInfo_Value( v[1], "B_UISEL", 1 )
+      end
+    end
+  end
+  
+  reaper.Main_OnCommand(41613, 0) -- Unpool MIDI item
+end
+
+function seq:uniqueAutomation(track, row)
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local cTrack = reaper.GetTrack(0, track)
+
+  -- Select only the automation items of interest.
+  local selected
+  if ( self.cfg.automation == 1 ) then
+    for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+      local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+      for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+        local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+        if ( math.floor( d_pos / rps + 0.0001 ) == row ) then
+          reaper.Main_OnCommand(40769, 0) -- Deselect all items
+          reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 1, true)
+          reaper.SetEditCurPos2(0, d_pos, false, false)
+          reaper.SetCursorContext(2, trackEnv)
+--          reaper.Main_OnCommand(40699, 0) -- Cut items
+          reaper.Main_OnCommand(40059, 0) -- Cut items
+          reaper.Main_OnCommand(40058, 0) -- Paste items 
+        end
+      end
+    end
+  end
+end
+
+function seq:pushPosition()
+  seq.posList[#seq.posList+1] = reaper.GetCursorPosition()
+end
+
+function seq:popPosition()
+  reaper.SetEditCurPos2(0, seq.posList[#seq.posList], true, false)
+  seq.posList[#seq.posList] = nil
+end
+
+function seq:uniqueifyElement(track, row)
+  self:pushPosition()
+  self:uniqueMIDI(track, row)
+  self:uniqueAutomation(track, row)
+  self:popPosition()
 end
 
 function seq:testWillBeUnique()
@@ -975,6 +1031,8 @@ end
 function seq:copyUnknownToPool()
   local trackItems = self.trackItems
   local poolGUIDs = self.poolGUIDs
+  
+  self:pushPosition()
 
   -- Check if there are any that aren't in the pool yet.
   local maxloc = self.maxloc
@@ -1000,6 +1058,8 @@ function seq:copyUnknownToPool()
   
   self.poolGUIDs = poolGUIDs
   self.maxloc = maxloc
+  
+  self:popPosition()
 end
 
 -- Index the GUID
@@ -1859,10 +1919,14 @@ end
 local function mouseStatus()
   local leftbutton  = gfx.mouse_cap & 1
   local rightbutton = gfx.mouse_cap & 2
+  local middlebutton = gfx.mouse_cap & 64
   if ( rightbutton > 0 ) then
     rightbutton = 1
   end
-  return leftbutton, rightbutton
+  if ( middlebutton > 0 ) then
+    middlebutton = 1
+  end
+  return leftbutton, rightbutton, middlebutton
 end
 
 function seq:toggleMute(trackidx)
@@ -1910,15 +1974,15 @@ function seq:calcGridCoord()
 end
 
 function seq:processMouseActions()
-  local gfx           = gfx
-  local fw            = self.cellw
-  local fh            = self.cellh
-  local fov           = self.fov
-  local scrollx       = fov.scrollx
-  local scrolly       = fov.scrolly
-  local left, right   = mouseStatus()
-  local ctime         = reaper.time_precise()
-  local lastLeft      = self.lastLeft
+  local gfx                 = gfx
+  local fw                  = self.cellw
+  local fh                  = self.cellh
+  local fov                 = self.fov
+  local scrollx             = fov.scrollx
+  local scrolly             = fov.scrolly
+  local left, right, middle = mouseStatus()
+  local ctime               = reaper.time_precise()
+  local lastLeft            = self.lastLeft
   
   if ( left == 1 ) then
     if ( gfx.mouse_y < fh ) then
@@ -1978,6 +2042,21 @@ function seq:processMouseActions()
     self.lastRightTime = reaper.time_precise()
   else
     self.lastRight = 0
+  end
+  
+  if ( middle == 1 ) then
+    if ( gfx.mouse_y > (2 * fh) and self.lastMiddle == 0 ) then
+      local Inew, Jnew = seq:calcGridCoord()
+      self.xpos = Inew - 1
+      self.ypos = Jnew - 2
+      self:forceCursorInRange()
+      if ( Inew and Jnew ) then
+        seq:uniqueifyElement(self.xpos, self.ypos)
+      end
+    end
+    self.lastMiddle = 1
+  else
+    self.lastMiddle = 0
   end
 end
 
