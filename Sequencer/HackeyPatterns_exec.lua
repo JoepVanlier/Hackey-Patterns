@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.12
+@version 0.13
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,13 @@
 
 --[[
  * Changelog:
+ * v0.13 (2018-10-06)
+   + Added MUTE/SOLO options.
+   + Improved rendering (no lines in continuous items.
+   + Show non-MIDI media items in a different color.
+   + Added track renaming (outer mouse click).
+   + Added pattern renaming (outer mouse click).
+   + Added drag clipboard (no actual clipboard functionality available yet).
  * v0.12 (2018-10-04)
    + Worked on pattern renaming.
    + Started work on mouse actions.
@@ -58,7 +65,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.12"
+scriptName = "Hackey Patterns v0.13"
 postMusic = 500
 
 seq             = {}
@@ -667,7 +674,7 @@ function seq:loadColors(colorScheme)
     self.colors.linecolor2       = {1/256*181, 1/256*189, 1/256*158, 0.4} -- beats (must not have 100% alpha as it's drawn over the cursor(!))
     self.colors.linecolor3       = {1/256*159, 1/256*147, 1/256*115, 1} -- scroll indicating trangle thingy
     self.colors.linecolor4       = {1, 1, 0, 1} -- Reaper edit cursor
-    self.colors.linecolor5       = {1/256*159, 1/256*147, 1/256*115, 0.4} -- Bar start
+    self.colors.linecolor5       = {1/256*159*.4+218/256*.6, 1/256*147*.4+214/256*.6, 1/256*115*.4+201/256*.6, 1.0} -- Bar start
     self.colors.loopcolor        = {1/256*48, 1/256*48, 1/256*33, 1} -- lines surrounding loop
     self.colors.copypaste        = {1/256*247, 1/256*247, 1/256*244, 0.66}  -- the selection (should be lighter(not alpha blanded) but is drawn over the data)
     self.colors.scrollbar1       = {1/256*48, 1/256*48, 1/256*33, 1} -- scrollbar handle & outline
@@ -822,7 +829,9 @@ function seq:loadColors(colorScheme)
   -- clear colour is in a different format
   gfx.clear = seq.colors.windowbackground[1]*256+(seq.colors.windowbackground[2]*256*256)+(seq.colors.windowbackground[3]*256*256*256)
   self.colors.red                 = {1, 0.4, 0.2, 0.4}
-  self.colors.green               = {.7, 1.0, 0.4, 0.4}  
+  self.colors.green               = {.7, 1.0, 0.4, 0.4}
+  local mix                       = 0.5
+  self.colors.linecolor6          = {self.colors.linecolor5[1]*mix+(1-mix)*(self.colors.windowbackground[1]), self.colors.linecolor5[2]*mix+(1-mix)*(self.colors.windowbackground[1]), self.colors.linecolor5[3]*mix+(1-mix)*(self.colors.windowbackground[2]), self.colors.linecolor5[4]}
        
   self.colors.patternFont         = "DejaVu Sans"
   self.colors.patternFontSize     = 12
@@ -1105,7 +1114,11 @@ function seq:fetchTracks()
   for i=0,nTracks-1 do
     local trk = reaper.GetTrack(0, i)
     local retval, str = reaper.GetSetMediaTrackInfo_String(trk, "P_NAME", "", false)
-    trackTitles[i] = fitStr( str, cellw )  
+    if str == "" then
+      trackTitles[i] = string.format("Track %02d", i)
+    else
+      trackTitles[i] = fitStr( str, cellw )  
+    end
     trackToIndex[trk] = i
   end
   
@@ -1125,6 +1138,18 @@ function seq:populateSequencer()
   end
   local dy = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local guidToPatternIdx = self.guidToPatternIdx
+  
+  for i=0,reaper.CountMediaItems(0)-1 do
+    local mediaItem = reaper.GetMediaItem(0,i)
+    local trackIdx = trackToIndex[reaper.GetMediaItemTrack(mediaItem)]
+    local pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
+    local len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")    
+    local ystart = math.floor(pos/dy)
+    local yend = math.ceil((pos+len)/dy)
+    for q = ystart+1,yend-1 do
+      patterns[trackIdx][q] = -2
+    end
+  end
   
   for i,v in pairs(self.trackItems) do
     local trackGUID = v[4]
@@ -1189,13 +1214,19 @@ function seq:updateGUI()
   local ms = .5*gfx.measurestr("S")  
   for ix=xStart,xEnd do
     local xl = xOrigin + fw*(ix+1)
-    gfx.set( table.unpack( colors.textcolor ) )
+    local cTrack = reaper.GetTrack( 0, ix+scrollx )
     gfx.x = xl + 4
     gfx.y = yOrigin
+    if ( self.renaming == 2 and ix+scrollx == self.renameTrackIdx ) then
+      gfx.set( table.unpack( colors.changed ) )
+    else
+      gfx.set( table.unpack( colors.textcolor ) )          
+    end
     gfx.printf( "%s", trackTitles[ix+scrollx] )
-    
-    local muted = 0
-    local solo = 0
+    gfx.set( table.unpack( colors.textcolor ) )
+        
+    local muted = reaper.GetMediaTrackInfo_Value( cTrack, "B_MUTE" )
+    local solo = reaper.GetMediaTrackInfo_Value( cTrack, "I_SOLO" );
     if ( muted == 1 ) then
       gfx.set( table.unpack( colors.red ) )
     else
@@ -1218,29 +1249,8 @@ function seq:updateGUI()
     gfx.x = xl + 0.75 * fw - ms
     gfx.printf( "S" )
     gfx.rect( xl+.5*fw, yOrigin + 1*fh-1, 1, fh )
-  end
-  
-  ------------------------------
-  -- Clipboard block drawing
-  ------------------------------
-  local cp = self.cp
-  if ( cp.ystart > -1 ) then
-    local xl  = clamp(0, fov.width,  cp.xstart - fov.scrollx)
-    local xe  = clamp(0, fov.width,  cp.xstop  - fov.scrollx)  
-    local yl  = clamp(0, fov.height, cp.ystart - fov.scrolly)
-    local ye  = clamp(0, fov.height, cp.ystop  - fov.scrolly)
-    gfx.set(table.unpack(colors.copypaste))    
-    if ( cp.all == 0 ) then   
-      gfx.rect(xOrigin + (1+xl) * fw, yOrigin + (2+yl) * fh, fw * ( xe - xl + 1 ), fh * ( ye - yl + 1 ) )
-    else
-      gfx.rect(xOrigin + fw, yOrigin + (2+yl) * fh, fw * ( xEnd - xStart + 1 ), fh * ( ye - yl + 1 ) )
-    end
-  end
-  
-  -- Cursor
-  gfx.set( table.unpack( colors.linecolor3 ) )
-  gfx.rect( xOrigin + fw * ( 1 + xrel ), xOrigin + ( 2 + yrel ) * fh, fw + 1, fh )
-  
+  end 
+   
   -- Dark alternating colors
   gfx.set( table.unpack( colors.linecolor2 ) )
   for iy = 6,ymax,8 do
@@ -1263,16 +1273,21 @@ function seq:updateGUI()
     for iy=0,ymax do
       gfx.x = xOrigin + (ix+1)*fw + 3
       gfx.y = yOrigin + (iy+2)*fh
-      if ( self.patterns[ix+scrollx][iy+scrolly] ) then
-        gfx.set( table.unpack( colors.linecolor5 ) )
-        gfx.rect( gfx.x-3, gfx.y, fw, fh )
-        if ( self.patterns[ix+scrollx][iy+scrolly] > 0 ) then
-          if ( self.renaming == 1 and self.xpos == (ix+scrollx) and self.ypos == (iy+scrolly) ) then
-            gfx.set( table.unpack( colors.changed ) )
-          else
-            gfx.set( table.unpack( colors.textcolor ) )          
-          end
-          gfx.printf("%s", patternNames[ix+scrollx][patterns[ix+scrollx][iy+scrolly]])
+      local curElement = patterns[ix+scrollx][iy+scrolly]
+      if ( curElement ) then
+        local nextElement = 0
+        if ( patterns[ix+scrollx][iy+scrolly+1] ) then
+          nextElement = 1
+        end
+        if ( curElement < -1 ) then
+          gfx.set( table.unpack( colors.linecolor6 ) )
+        else
+          gfx.set( table.unpack( colors.linecolor5 ) )
+        end
+        gfx.rect( gfx.x-3, gfx.y, fw, fh-1+nextElement )
+        if ( curElement > 0 ) then
+          gfx.set( table.unpack( colors.textcolor ) )
+          gfx.printf("%s", patternNames[ix+scrollx][curElement])
         else
         end
       else
@@ -1286,6 +1301,39 @@ function seq:updateGUI()
   for ix=xStart,xEnd+1 do
     gfx.rect( xOrigin + fw*(ix+1), yOrigin, 1, gfx.h-yOrigin )
   end
+  
+  ------------------------------
+  -- Clipboard block drawing
+  ------------------------------
+  local cp = self.cp
+  if ( cp.ystart > -1 ) then
+    local xl  = clamp(0, fov.width,  cp.xstart - fov.scrollx)
+    local xe  = clamp(0, fov.width,  cp.xstop  - fov.scrollx)  
+    local yl  = clamp(0, fov.height, cp.ystart - fov.scrolly)
+    local ye  = clamp(0, fov.height, cp.ystop  - fov.scrolly)
+    gfx.set(table.unpack(colors.copypaste))    
+    if ( cp.all == 0 ) then   
+      gfx.rect(xOrigin + (1+xl) * fw, yOrigin + (2+yl) * fh, fw * ( xe - xl + 1 ), fh * ( ye - yl + 1 ) )
+    else
+      gfx.rect(xOrigin + fw, yOrigin + (2+yl) * fh, fw * ( xEnd - xStart + 1 ), fh * ( ye - yl + 1 ) )
+    end
+  end
+  
+  -- Cursor
+  gfx.set( table.unpack( colors.linecolor3 ) )
+  gfx.rect( xOrigin + fw * ( 1 + xrel ) + 1, xOrigin + ( 2 + yrel ) * fh, fw - 1, fh )
+  local curElement = patterns[self.xpos][self.ypos]
+  if ( curElement and curElement > 0 ) then
+    if ( self.renaming == 1 ) then
+      gfx.set( table.unpack( colors.changed ) )
+    else
+      gfx.set( table.unpack( colors.textcolor ) )          
+    end
+    gfx.x = xOrigin + fw * ( 1 + xrel ) + 3
+    gfx.y = xOrigin + ( 2 + yrel ) * fh
+    gfx.printf("%s", patternNames[self.xpos][curElement])
+  end
+  gfx.set( table.unpack( colors.textcolor ) )
   
   -- Tick counts
   local xs = xOrigin + fw - 5
@@ -1783,6 +1831,31 @@ function seq:rename(track, row)
   return GUID, name
 end
 
+function seq:renamePattern()
+  local GUID, name = self:rename(self.xpos, self.ypos)
+  if ( GUID ) then
+    self.GUID = GUID
+    self.oldMidiName = name
+    self.midiName = name
+    self.renaming = 1
+  end
+end
+
+function seq:renameTrack(track)
+  -- Media items
+  local name, GUID
+  local cTrack = reaper.GetTrack(0, track)
+  self.renaming = 2
+  local jnk, str = reaper.GetTrackName(cTrack, "")
+  self.trackName = str
+  self.renameTrackIdx = track
+end
+
+function seq:updateTrackName(track, name)
+  local cTrack = reaper.GetTrack(0, track)
+  reaper.GetSetMediaTrackInfo_String(cTrack, "P_NAME", name, true)
+end
+
 local function mouseStatus()
   local leftbutton  = gfx.mouse_cap & 1
   local rightbutton = gfx.mouse_cap & 2
@@ -1792,7 +1865,34 @@ local function mouseStatus()
   return leftbutton, rightbutton
 end
 
-function seq:processMouse()
+function seq:toggleMute(trackidx)
+  local cTrack = reaper.GetTrack( 0, trackidx )
+  local mute = reaper.GetMediaTrackInfo_Value(cTrack, "B_MUTE")
+  if ( mute == 1 ) then
+    reaper.SetMediaTrackInfo_Value( cTrack, "B_MUTE", 0 )
+  else
+    reaper.SetMediaTrackInfo_Value( cTrack, "B_MUTE", 1 )
+     
+    -- If it was solo, un-solo!
+    if ( reaper.GetMediaTrackInfo_Value( cTrack, "I_SOLO" ) > 0 ) then
+      reaper.SetMediaTrackInfo_Value( cTrack, "I_SOLO", 0 )
+    end
+  end
+end
+
+function seq:toggleSolo(trackidx)
+  local cTrack = reaper.GetTrack( 0, trackidx )
+  local wasSolo = reaper.GetMediaTrackInfo_Value( cTrack, "I_SOLO" ) > 0;
+  if ( wasSolo ) then
+    reaper.SetMediaTrackInfo_Value( cTrack, "I_SOLO", 0 )
+  else
+    -- If solo'd, make sure it is not muted
+    reaper.SetMediaTrackInfo_Value( cTrack, "B_MUTE", 0 )
+    reaper.SetMediaTrackInfo_Value( cTrack, "I_SOLO", 1 )
+  end
+end
+
+function seq:calcGridCoord()
   local fw            = self.cellw
   local fh            = self.cellh
   local fov           = self.fov
@@ -1803,10 +1903,82 @@ function seq:processMouse()
   local yOrigin       = 0
   local xEnd          = fov.width
   
-  Inew = math.floor( gfx.mouse_x / fw ) + scrollx
-  Jnew = math.floor( gfx.mouse_y / fh ) + scrolly
+  local Inew = math.floor( gfx.mouse_x / fw ) + scrollx
+  local Jnew = math.floor( gfx.mouse_y / fh ) + scrolly
   
   return Inew, Jnew
+end
+
+function seq:processMouseActions()
+  local gfx           = gfx
+  local fw            = self.cellw
+  local fh            = self.cellh
+  local fov           = self.fov
+  local scrollx       = fov.scrollx
+  local scrolly       = fov.scrolly
+  local left, right   = mouseStatus()
+  local ctime         = reaper.time_precise()
+  local lastLeft      = self.lastLeft
+  
+  if ( left == 1 ) then
+    if ( gfx.mouse_y < fh ) then
+    elseif ( gfx.mouse_y > fh and gfx.mouse_y < 2*fh ) then
+      -- Mute / Solo handling
+      local cTrack = math.floor( gfx.mouse_x / fw )
+      if ( lastLeft == 0 ) then
+        if ( gfx.mouse_x - fw * cTrack ) < 0.5 * fw then
+          self:toggleMute(scrollx + cTrack-1)
+        else
+          self:toggleSolo(scrollx + cTrack-1)
+        end
+      end
+    else
+      -- Click inside the grid
+      local Inew, Jnew = seq:calcGridCoord()
+
+      if ( Inew and Jnew ) then        
+        if ( lastLeft == 0 ) then
+          -- Move the cursor pos on initial click
+          seq:resetShiftSelect()
+          --seq:dragBlock(Inew+fov.scrollx, Jnew+fov.scrolly)
+          self.xpos = Inew - 1
+          self.ypos = Jnew - 2
+          self:forceCursorInRange()
+        else
+          -- Change selection if it wasn't the initial click
+          seq:dragBlock(Inew+fov.scrollx-1, Jnew+fov.scrolly-2)
+        end
+      end
+    end
+    
+    self.lastLeft = 1
+    self.lastLeftTime = reaper.time_precise()
+  else
+    self.lastLeft = 0
+  end
+  
+  if ( right == 1 ) then
+    if ( gfx.mouse_y < fh and self.lastRight == 0 ) then
+      local cTrack = math.floor( gfx.mouse_x / fw )
+      if ( cTrack < reaper.CountTracks(0) ) then
+        seq:renameTrack(scrollx + cTrack - 1)
+      end
+    elseif ( gfx.mouse_y > 2 * fh ) then
+      local Inew, Jnew = seq:calcGridCoord()
+      if ( Inew and Jnew ) then        
+        self.xpos = Inew - 1
+        self.ypos = Jnew - 2
+        self:forceCursorInRange()
+        self:resetShiftSelect()
+        self:renamePattern()
+      end
+    end
+    
+    self.lastRight = 1
+    self.lastRightTime = reaper.time_precise()
+  else
+    self.lastRight = 0
+  end
 end
 
 local function updateLoop()
@@ -1815,27 +1987,8 @@ local function updateLoop()
   seq:updateData()
   seq:updateGUI()
   
-  local left, right = mouseStatus()
-  if ( left == 1 ) then
-    seq:processMouse()
-
-    if ( Inew and Jnew ) then        
-      -- Move the cursor pos on initial click
-      if ( seq.lastleft == 0 ) then
-        --seq:resetShiftSelect()
-        --seq:dragBlock(Inew+fov.scrollx, Jnew+fov.scrolly)
-        seq.xpos = Inew - 1
-        seq.ypos = Jnew - 2
-        seq:forceCursorInRange()
-      else
-        -- Change selection if it wasn't the initial click
-        --seq:dragBlock(Inew+fov.scrollx, Jnew+fov.scrolly)
-      end
-    end
-    
-    seq.lastleft = 1
-  else
-    seq.lastleft = 0
+  if ( seq.renaming == 0 ) then
+    seq:processMouseActions()
   end
   
   if lastChar ~= -1 then
@@ -1906,13 +2059,7 @@ local function updateLoop()
         seq:forceCursorInRange()
         seq:dragBlock()
       elseif inputs('rename') then
-        local GUID, name = seq:rename(seq.xpos, seq.ypos)
-        if ( GUID ) then
-          seq.GUID = GUID
-          seq.oldMidiName = name
-          seq.midiName = name
-          seq.renaming = 1
-        end
+        seq:renamePattern()
       elseif ( inputs('delete') ) then
         modified = 1
         reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
@@ -1937,7 +2084,7 @@ local function updateLoop()
       elseif inputs( 'remove' ) then
         seq.midiName = seq.midiName:sub(1, seq.midiName:len()-1)
         seq:updateMidiName(seq.GUID, seq.midiName)
-      else    
+      else
         if ( pcall( function () string.char(lastChar) end ) ) then
           if ( lastChar > 0 ) then
             local str = string.char( lastChar )
@@ -1946,6 +2093,26 @@ local function updateLoop()
           end
         end
       end
+    elseif ( seq.renaming == 2 ) then
+      -- Renaming pattern
+      if inputs( 'enter' ) then
+        seq.renaming = 0
+      elseif inputs( 'escape' ) then
+        seq.trackName = seq.oldTrackName
+        seq:updateTrackName(seq.renameTrackIdx, seq.trackName)
+        seq.renaming = 0
+      elseif inputs( 'remove' ) then
+        seq.trackName = seq.trackName:sub(1, seq.trackName:len()-1)
+        seq:updateTrackName(seq.renameTrackIdx, seq.trackName)
+      else
+        if ( pcall( function () string.char(lastChar) end ) ) then
+          if ( lastChar > 0 ) then
+            local str = string.char( lastChar )
+            seq.trackName = string.format( '%s%s', seq.trackName, str )
+            seq:updateTrackName(seq.renameTrackIdx, seq.trackName)
+          end
+        end
+      end      
     end
   
     reaper.defer(updateLoop)
