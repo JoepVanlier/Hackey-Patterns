@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="68dcd722cb04e4b58a1374150a6082c7901b79d1">
+<index version="1" name="Hackey Sequencer" commit="9cc89681a448b43afca3a9ae243b5f4cc2338871">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -53,6 +53,15 @@ here
         <changelog><![CDATA[+ Worked on pattern renaming.
 + Started work on mouse actions.]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/68dcd722cb04e4b58a1374150a6082c7901b79d1/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.13" author=": Joep Vanlier" time="2018-10-06T15:01:22Z">
+        <changelog><![CDATA[+ Added MUTE/SOLO options.
++ Improved rendering (no lines in continuous items.
++ Show non-MIDI media items in a different color.
++ Added track renaming (outer mouse click).
++ Added pattern renaming (outer mouse click).
++ Added drag clipboard (no actual clipboard functionality available yet).]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/9cc89681a448b43afca3a9ae243b5f4cc2338871/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
