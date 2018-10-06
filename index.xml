@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="9cc89681a448b43afca3a9ae243b5f4cc2338871">
+<index version="1" name="Hackey Sequencer" commit="0c89964072a4eab5bdb42065937fa46c9d7d8a4c">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -62,6 +62,10 @@ here
 + Added pattern renaming (outer mouse click).
 + Added drag clipboard (no actual clipboard functionality available yet).]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/9cc89681a448b43afca3a9ae243b5f4cc2338871/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.14" author=": Joep Vanlier" time="2018-10-06T16:18:29Z">
+        <changelog><![CDATA[+ Middle mouse uniqueifies a pattern (un-ghost/un-pool).]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/0c89964072a4eab5bdb42065937fa46c9d7d8a4c/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
