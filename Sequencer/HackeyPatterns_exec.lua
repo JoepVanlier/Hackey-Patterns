@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.17
+@version 0.18
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,10 @@
 
 --[[
  * Changelog:
+ * v0.18 (2018-10-07)
+   + Add pattern deletion button (deletes it from the pool and song)
+   + Added undo and redo
+   + Added usage highlighting when hovering over patterns in pattern list
  * v0.17 (2018-10-07)
    + Added subtle whole row highlighting for current line.
  * v0.16 (2018-10-07)
@@ -76,7 +80,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.17"
+scriptName = "Hackey Patterns v0.18"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -103,7 +107,8 @@ seq.cfg.nChars        = 9
 seq.cfg.nameSize      = 180
 seq.cfg.page          = 4
 seq.cfg.automation    = 1
-
+seq.cfg.boxsize       = 8
+  
 seq.advance       = 1
 
 seq.cfg.zoom      = 1
@@ -1076,6 +1081,77 @@ function seq:copyUnknownToPool()
   self:popPosition()
 end
 
+function seq:deleteFromPool(trackidx, poolidx)
+  local idxToGUID   = self.idxToGUID
+  local poolGUIDs   = self.poolGUIDs
+  local trackItems  = self.trackItems
+  local GUID        = idxToGUID[trackidx][poolidx]
+  
+  local poolTable = poolGUIDs[GUID] -- { mediaItem, track, take }
+  local mediaItem = poolTable[1]
+  local cTrack    = poolTable[2]
+  
+  --------------------------------------------------
+  -- Find corresponding automation GUIDs to delete
+  --------------------------------------------------
+  local m_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
+  
+  reaper.Main_OnCommand(40769, 0) -- Deselect all items  
+  reaper.SelectAllMediaItems(0, false)
+  
+  reaper.SetMediaItemSelected(mediaItem, true)
+  
+  local automationPoolIDs = {}
+  for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+    local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+    for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+      local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+      if ( d_pos == m_pos ) then
+        -- Got one!
+        local pool_id = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POOL_ID", 0, false)
+        reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 1, true)
+        automationPoolIDs[pool_id] = 1
+      end
+    end
+  end
+  
+  -- Check if there are any that aren't in the pool yet.
+  for i,v in pairs( trackItems ) do
+    local curGUID = v[4]
+    local c_pos = reaper.GetMediaItemInfo_Value(v[1], "D_POSITION")
+    if ( curGUID == GUID ) then
+      -- Find automation on this line
+      local autoItems = {}
+      for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+        local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+        for j=0,reaper.CountAutomationItems(trackEnv)-1 do
+          -- See if we have all the automation items that were at the pool represented here.
+          if ( reaper.GetSetAutomationItemInfo( trackEnv, j, "D_POSITION", 0, false ) == c_pos ) then
+            local curpool_id = reaper.GetSetAutomationItemInfo(trackEnv, j, "D_POOL_ID", 0, false)
+            if ( automationPoolIDs[curpool_id] ) then
+              autoItems[#autoItems+1] = { trackEnv, j }
+            end
+          end
+        end
+      end
+
+      -- Select MIDI item / automation item pairs that fully match only
+      if ( #autoItems == #automationPoolIDs ) then
+        reaper.SetMediaItemSelected(v[1], true)
+        reaper.SetOnlyTrackSelected(cTrack)
+        for i,v in pairs( autoItems ) do
+          reaper.GetSetAutomationItemInfo(v[1], v[2], "D_UISEL", 1, true)
+        end
+      else
+        -- print("Failed automation match")
+      end
+    end
+  end
+  
+  reaper.Main_OnCommand(40006, 0) -- Delete automation items
+end
+
+
 -- Index the GUID
 function seq:buildPatternList()
   -- These tables should eventually be stored and loaded from the track
@@ -1202,6 +1278,7 @@ end
 
 function seq:populateSequencer()
   local patterns      = {}
+  local highlight     = {}
   local trackToIndex  = self.trackToIndex
   
   -- Go over all the media items we found that weren't in the pool
@@ -1209,6 +1286,7 @@ function seq:populateSequencer()
   --   guidToPatternIdx[i] = c
   for i=0,self.max_xpos-1 do
     patterns[i] = {}
+    highlight[i] = {}
   end
   local dy = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local guidToPatternIdx = self.guidToPatternIdx
@@ -1235,12 +1313,19 @@ function seq:populateSequencer()
     local q = ystart
     local trackIdx = trackToIndex[v[2]]
     patterns[trackIdx][q] = guidToPatternIdx[trackIdx][trackGUID]
+    if ( self.hoverGUID == trackGUID ) then
+      highlight[trackIdx][q] = 1
+      for q = ystart+1,yend-1 do
+        highlight[trackIdx][q] = 1
+      end
+    end
     for q = ystart+1,yend-1 do
       patterns[trackIdx][q] = -1
     end
   end
   
   self.patterns     = patterns
+  self.highlight    = highlight
 end
 
 function seq:updateData()
@@ -1264,6 +1349,7 @@ function seq:updateGUI()
   local nTracks       = reaper.CountTracks(0)
   local patternNames  = self.patternNames
   local patterns      = self.patterns
+  local highlight     = self.highlight
   local trackTitles   = self.trackTitles
   local fov           = self.fov
   
@@ -1349,7 +1435,9 @@ function seq:updateGUI()
     gfx.rect( xOrigin + 3,  yOrigin + (iy+1)*fh-1, fw * (xEnd-xStart+2)-3, 1 )
   end 
   
-  -- Pattern names
+  ------------------------------------------
+  -- Pattern blocks
+  ------------------------------------------
   gfx.set( table.unpack( colors.textcolor ) )
   for ix=xStart,xEnd do
     for iy=0,ymax do
@@ -1364,7 +1452,11 @@ function seq:updateGUI()
         if ( curElement < -1 ) then
           gfx.set( table.unpack( colors.linecolor6 ) )
         else
-          gfx.set( table.unpack( colors.linecolor5 ) )
+          if ( highlight[ix+scrollx][iy+scrolly] ) then
+            gfx.set( table.unpack( colors.linecolor2 ) )          
+          else
+            gfx.set( table.unpack( colors.linecolor5 ) )
+          end
         end
         gfx.rect( gfx.x-3, gfx.y, fw, fh-1+nextElement )
         if ( curElement > 0 ) then
@@ -1429,22 +1521,30 @@ function seq:updateGUI()
     gfx.printf( str )
   end
   
-  
   -- Header lines
   gfx.set( table.unpack( colors.textcolor ) )
   gfx.rect( xOrigin+fw, yOrigin, fw * (xEnd-xStart+1), 1 )
   gfx.rect( xOrigin+fw, yOrigin + fh-1, fw * (xEnd-xStart+1), 1 )
   gfx.rect( xOrigin+fw, yOrigin + 2*fh-1, fw * (xEnd-xStart+1), 1 )
-  
+   
   -- Pattern names
-  local X = gfx.w - self.cfg.nameSize + 5
-  gfx.x = X
+  local X = gfx.w - self.cfg.nameSize
+  local boxsize = self.cfg.boxsize
+  gfx.x = X 
   gfx.y = fh
   gfx.printf( "Track patterns/items" )
   local chars = seq.chars
   for i,v in pairs( self.patternNames[self.xpos] ) do
-    gfx.x = X
-    gfx.y = (2+i) * fh
+    local Y = (2+i) * fh
+    gfx.line(X, Y, X+boxsize, Y+boxsize)
+    gfx.line(X+boxsize, Y, X, Y+boxsize)
+    gfx.line(X, Y, X+boxsize, Y)
+    gfx.line(X, Y, X, Y+boxsize)
+    gfx.line(X+boxsize, Y, X, Y+boxsize)
+    gfx.line(X+boxsize, Y, X+boxsize, Y+boxsize)
+    gfx.line(X, Y+boxsize, X+boxsize, Y+boxsize)
+    gfx.x = X+14
+    gfx.y = Y-1
     gfx.printf( "%s. %s", chars:sub(i,i), v )
   end
   
@@ -1669,7 +1769,7 @@ function seq:deleteRange(track, row)
           --reaper.DeleteTrackMediaItem(v[2], v[1])
           if not deletedAutomation then
             --reaper.SelectAllMediaItems(0, false)
-            reaper.Main_OnCommand(40289, 0) -- Deselect all items
+            reaper.Main_OnCommand(40769, 0) -- Deselect all items
             deletedAutomation = 1
           end
           reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 1, true)
@@ -2163,7 +2263,7 @@ function seq:processMouseActions()
           self:toggleSolo(scrollx + cTrack-1)
         end
       end
-    else
+    elseif ( gfx.mouse_x < fw * (fov.width+2) ) then
       -- Click inside the grid
       local Inew, Jnew = seq:calcGridCoord()
 
@@ -2176,7 +2276,6 @@ function seq:processMouseActions()
           self.ypos = Jnew - 2
           self:forceCursorInRange()
           
-          
           local doubleClickInterval = 0.2
           if ( (ctime - self.lastLeftTime) < doubleClickInterval ) then
             self:startHT(self.xpos, self.ypos)
@@ -2184,6 +2283,25 @@ function seq:processMouseActions()
         else
           -- Change selection if it wasn't the initial click
           seq:dragBlock(Inew+fov.scrollx-1, Jnew+fov.scrolly-2)
+        end
+      end
+    else
+      -- Pattern / settings area
+      if ( lastLeft == 0 ) then
+        local boxsize = self.cfg.boxsize
+        if ( gfx.mouse_x > gfx.w - self.cfg.nameSize ) then
+          if ( gfx.mouse_x < gfx.w - self.cfg.nameSize + boxsize ) then
+            i = math.floor((gfx.mouse_y - 2) / fh)-2
+            if ( i > 0 ) then
+              local pNames = self.patternNames[self.xpos]
+              -- Which pattern are we trying to delete?
+              if i <= #pNames then
+                reaper.Undo_OnStateChange2(0, "Sequencer: Delete from pool")
+                reaper.MarkProjectDirty(0)
+                self:deleteFromPool(self.xpos, i)
+              end
+            end
+          end
         end
       end
     end
@@ -2224,12 +2342,28 @@ function seq:processMouseActions()
       self.ypos = Jnew - 2
       self:forceCursorInRange()
       if ( Inew and Jnew ) then
+        reaper.Undo_OnStateChange2(0, "Sequencer: Uniqueify Pattern")
+        reaper.MarkProjectDirty(0)
         seq:uniqueifyElement(self.xpos, self.ypos)
       end
     end
     self.lastMiddle = 1
   else
     self.lastMiddle = 0
+  end
+  
+  self.hoverGUID = nil
+  if ( gfx.mouse_x > gfx.w - self.cfg.nameSize ) then
+    if ( gfx.mouse_x < gfx.w ) then
+      i = math.floor((gfx.mouse_y - 2) / fh)-2
+      if ( i > 0 ) then
+        local pNames = self.patternNames[self.xpos]
+        -- Which pattern are we trying to delete?
+        if i <= #pNames then
+          self.hoverGUID = self.idxToGUID[self.xpos][i]
+        end
+      end
+    end
   end
 end
 
@@ -2317,14 +2451,22 @@ local function updateLoop()
       elseif inputs('setloop') then
         seq:setLoopToPattern()
       elseif inputs('rename') then
+        reaper.Undo_OnStateChange2(0, "Sequencer: Rename (Ren)")
+        reaper.MarkProjectDirty(0)
         seq:renamePattern()
+      elseif inputs('undo') then
+        reaper.Undo_DoUndo2(0) 
+      elseif inputs('redo') then
+        reaper.Undo_DoRedo2(0)
       elseif ( inputs('delete') ) then
         modified = 1
-        reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
+        reaper.Undo_OnStateChange2(0, "Sequencer: Delete (Del)")
+        reaper.MarkProjectDirty(0)
         seq:delete()
       elseif ( inputs('delete2') ) then
         modified = 1
-        reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
+        reaper.Undo_OnStateChange2(0, "Sequencer: Delete (Del)")
+        reaper.MarkProjectDirty(0)
         seq:delete()
         seq.ypos = seq.ypos + seq.advance
       elseif ( inputs('playfrom') ) then
