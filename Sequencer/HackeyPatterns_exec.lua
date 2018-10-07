@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.19
+@version 0.20
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,9 @@
 
 --[[
  * Changelog:
+ * v0.20 (2018-10-07)
+   + Add tab/shift+tab for movement along columns.
+   + Add mousewheel movement.
  * v0.19 (2018-10-07)
    + Fixed issue with pattern precision when calculating pattern display.
    + Added global eps parameter rather than using hardcoded values everywhere.
@@ -83,7 +86,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.19"
+scriptName = "Hackey Patterns v0.20"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -2265,6 +2268,12 @@ function seq:processMouseActions()
   local ctime               = reaper.time_precise()
   local lastLeft            = self.lastLeft
   
+  if ( gfx.mouse_wheel ~= 0 ) then
+    self.ypos = self.ypos - math.floor( gfx.mouse_wheel / 120 )
+    self:resetShiftSelect()
+    gfx.mouse_wheel = 0
+  end 
+  
   if ( left == 1 ) then
     if ( gfx.mouse_y < fh ) then
     elseif ( gfx.mouse_y > fh and gfx.mouse_y < 2*fh ) then
@@ -2398,6 +2407,12 @@ local function updateLoop()
         seq:resetShiftSelect()
       elseif inputs('right') then
         seq.xpos = seq.xpos + 1
+        seq:resetShiftSelect()
+      elseif inputs('tab') then
+        seq.xpos = seq.xpos + 1
+        seq:resetShiftSelect()
+      elseif inputs('shifttab') then
+        seq.xpos = seq.xpos - 1
         seq:resetShiftSelect()
       elseif inputs('up') then
         seq.ypos = seq.ypos - 1
