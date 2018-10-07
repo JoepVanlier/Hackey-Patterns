@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.15
+@version 0.16
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,8 @@
 
 --[[
  * Changelog:
+ * v0.16 (2018-10-07)
+   + Integrated with Hackey Trackey (doubleclick a pattern in the sequencer)
  * v0.15 (2018-10-06)
    + Zero is zero ;)
    + Added play from / play toggle.
@@ -72,8 +74,10 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.15"
+scriptName = "Hackey Patterns v0.16"
 postMusic = 500
+
+hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
 
 seq             = {}
 seq.fov         = {}
@@ -86,6 +90,9 @@ seq.ypos        = 0
 seq.res         = 16
 seq.patterns    = {}
 seq.renaming    = 0
+
+seq.lastLeft = 1
+seq.lastLeftTime = 0
 
 seq.posList = {}
 
@@ -1927,6 +1934,23 @@ function seq:gotoRow(row)
   reaper.DeleteProjectMarker(0, loc, 0)
 end
 
+function seq:startHT(track, row)
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local cTrack = reaper.GetTrack(0, track)
+  for i=0,reaper.CountMediaItems(0)-1 do
+    local mediaItem = reaper.GetMediaItem(0, i)
+    -- Only deal with media items on this track
+    if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
+      local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
+      if ( math.floor( d_pos / rps + 0.0001 ) == row ) then
+        reaper.SetProjExtState(0, "MVJV001", "initialiseAtTrack", track)
+        reaper.SetProjExtState(0, "MVJV001", "initialiseAtRow", row*rps)
+        self:callScript(hackeyTrackey)
+      end
+    end
+  end
+end
+
 function seq:rename(track, row)
   -- Media items
   local name, GUID
@@ -2072,6 +2096,45 @@ function seq:setLoopEnd()
   reaper.GetSet_LoopTimeRange2(0, true, true, lPos, lEnd, true)    
 end
 
+local function findCommandID(name)
+  local commandID
+  local lines = {}
+  local fn = reaper.GetResourcePath() .. '//' .. "Reaper-kb.ini"
+  for line in io.lines(fn) do
+    lines[#lines + 1] = line
+  end
+  
+  for i,v in pairs(lines) do
+    if ( v:find(name, 1, true) ) then
+      local startidx = v:find("RS", 1, true)
+      local endidx = v:find(" ", startidx, true)
+      commandID = (v:sub(startidx,endidx-1))
+    end
+  end
+  
+  if ( commandID ) then
+    return "_" .. commandID
+  end
+end
+
+function seq:callScript(scriptName)
+  if ( not scriptName ) then
+    reaper.ShowMessageBox("Error callScript called without specifying a script", "Error", 0)
+    return
+  end
+
+  local cmdID = findCommandID( scriptName )
+  
+  if ( cmdID ) then
+    local cmd = reaper.NamedCommandLookup( cmdID )
+    if ( cmd ) then
+      reaper.Main_OnCommand(cmd, 0)
+    else
+      reaper.ShowMessageBox("Failed to load script "..cmd, "Error", 0)
+    end
+  end
+end
+
 function seq:processMouseActions()
   local gfx                 = gfx
   local fw                  = self.cellw
@@ -2107,6 +2170,12 @@ function seq:processMouseActions()
           self.xpos = Inew - 1
           self.ypos = Jnew - 2
           self:forceCursorInRange()
+          
+          
+          local doubleClickInterval = 0.2
+          if ( (ctime - self.lastLeftTime) < doubleClickInterval ) then
+            self:startHT(self.xpos, self.ypos)
+          end
         else
           -- Change selection if it wasn't the initial click
           seq:dragBlock(Inew+fov.scrollx-1, Jnew+fov.scrolly-2)
