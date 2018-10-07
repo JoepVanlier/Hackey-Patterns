@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.16
+@version 0.17
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,8 @@
 
 --[[
  * Changelog:
+ * v0.17 (2018-10-07)
+   + Added subtle whole row highlighting for current line.
  * v0.16 (2018-10-07)
    + Integrated with Hackey Trackey (doubleclick a pattern in the sequencer)
  * v0.15 (2018-10-06)
@@ -74,7 +76,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.16"
+scriptName = "Hackey Patterns v0.17"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -848,7 +850,7 @@ function seq:loadColors(colorScheme)
   self.colors.green               = {.7, 1.0, 0.4, 0.4}
   local mix                       = 0.5
   self.colors.linecolor6          = {self.colors.linecolor5[1]*mix+(1-mix)*(self.colors.windowbackground[1]), self.colors.linecolor5[2]*mix+(1-mix)*(self.colors.windowbackground[1]), self.colors.linecolor5[3]*mix+(1-mix)*(self.colors.windowbackground[2]), self.colors.linecolor5[4]}
-       
+  self.colors.selectLight         = {self.colors.selectcolor[1], self.colors.selectcolor[2], self.colors.selectcolor[3], .2 * self.colors.selectcolor[4]}
   self.colors.patternFont         = "DejaVu Sans"
   self.colors.patternFontSize     = 12
   
@@ -1413,6 +1415,9 @@ function seq:updateGUI()
     gfx.y = xOrigin + ( 2 + yrel ) * fh
     gfx.printf("%s", patternNames[self.xpos][curElement])
   end
+  
+  gfx.set( table.unpack( colors.selectLight ) )
+  gfx.rect( 0, xOrigin + ( 2 + yrel ) * fh, (fov.width+2)*fw, fh )
   gfx.set( table.unpack( colors.textcolor ) )
   
   -- Tick counts
