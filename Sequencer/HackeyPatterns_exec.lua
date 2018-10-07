@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.20
+@version 0.21
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -14,17 +14,18 @@
   Hackey Patterns provides an alternative way for visualizing and manipulating timeline in REAPER.
   
   WARNING: THIS PLUGIN IS INCOMPLETE AND NOT READY FOR USE
-  
-  If you use this plugin and enjoy it let me/others know. If you run into any bugs
-  and figure out a way to reproduce them, please open an issue on the plugin's
-  github page [here](https://github.com/JoepVanlier/Hackey-Trackey/issues). I would
-  greatly appreciate it!
-  
+   
   Happy sequencin' :)
 --]]
 
 --[[
  * Changelog:
+ * v0.21 (2018-10-07)
+   + Fix issue with pattern coloring.
+   + Default mousewheel scrolls 4, shift mousewheel scrolls 1.
+   + Added more use of the position stack to make sure positions are preserved when executing commands.
+   + Added command for Open HT (enter is default).
+   + Added insert / remove / clear row (CTRL+Backspace/Insert/Delete)
  * v0.20 (2018-10-07)
    + Add tab/shift+tab for movement along columns.
    + Add mousewheel movement.
@@ -86,7 +87,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.20"
+scriptName = "Hackey Patterns v0.21"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -114,6 +115,7 @@ seq.cfg.nameSize      = 180
 seq.cfg.page          = 4
 seq.cfg.automation    = 1
 seq.cfg.boxsize       = 8
+seq.cfg.largeScroll   = 4
   
 seq.advance       = 1
 
@@ -170,7 +172,8 @@ function seq:loadKeys( keySet )
     keys.home           = { 0,    0,  0,    1752132965 }    -- Home
     keys.End            = { 0,    0,  0,    6647396 }       -- End
     keys.toggle         = { 0,    0,  0,    32 }            -- Space
-    keys.playfrom       = { 0,    0,  0,    13 }            -- Enter
+    keys.playfrom       = { 0,    0,  1,    13 }            -- Shift + Enter
+    keys.hackeytrackey  = { 0,    0,  0,    13 }            -- Enter
     keys.enter          = { 0,    0,  0,    13 }            -- Enter        
     keys.insert         = { 0,    0,  0,    6909555 }       -- Insert
     keys.remove         = { 0,    0,  0,    8 }             -- Backspace
@@ -185,12 +188,6 @@ function seq:loadKeys( keySet )
     keys.copyBlock      = { 1,    0,  0,    3 }             -- CTRL + C
     keys.shiftItemUp    = { 0,    0,  1,    43 }            -- SHIFT + Num pad +
     keys.shiftItemDown  = { 0,    0,  1,    45 }            -- SHIFT + Num pad -
-    keys.scaleUp        = { 1,    1,  1,    267 }           -- CTRL + SHIFT + ALT + Num pad +
-    keys.scaleDown      = { 1,    1,  1,    269 }           -- CTRL + SHIFT + ALT + Num pad -   
-    keys.octaveup       = { 1,    0,  0,    30064 }         -- CTRL + /\
-    keys.octavedown     = { 1,    0,  0,    1685026670 }    -- CTRL + \/
-    keys.envshapeup     = { 1,    0,  1,    30064 }         -- CTRL + SHIFT + /\
-    keys.envshapedown   = { 1,    0,  1,    1685026670 }    -- CTRL + SHIFT + /\
     keys.help           = { 0,    0,  0,    26161 }         -- F1
     keys.outchandown    = { 0,    0,  0,    26162 }         -- F2
     keys.outchanup      = { 0,    0,  0,    26163 }         -- F3
@@ -220,10 +217,6 @@ function seq:loadKeys( keySet )
     keys.toggleRec      = { 1,    0,  0,    18 }            -- CTRL + R
     keys.showMore       = { 1,    0,  0,    11 }            -- CTRL + +
     keys.showLess       = { 1,    0,  0,    13 }            -- CTRL + -
-    keys.addCol         = { 1,    0,  1,    11 }            -- CTRL + Shift + +
-    keys.remCol         = { 1,    0,  1,    13 }            -- CTRL + Shift + -
-    keys.addColAll      = { 1,    0,  1,    1 }             -- CTRL + Shift + A
-    keys.addPatchSelect = { 1,    0,  1,    16 }            -- CTRL + Shift + P
     keys.tab            = { 0,    0,  0,    9 }             -- Tab
     keys.shifttab       = { 0,    0,  1,    9 }             -- SHIFT + Tab
     keys.follow         = { 1,    0,  0,    6 }             -- CTRL + F
@@ -233,9 +226,7 @@ function seq:loadKeys( keySet )
     keys.prevTrack      = { 1,    0,  1,    1818584692.0 }  -- CTRL + Shift + <-
     
     keys.insertRow      = { 1,    0,  0,    6909555 }       -- Insert row CTRL+Ins
-    keys.removeRow      = { 1,    0,  0,    8 }             -- Remove Row CTRL+Backspace
-    keys.wrapDown       = { 1,    0,  1,    6909555 }       -- CTRL + SHIFT + Ins
-    keys.wrapUp         = { 1,    0,  1,    8 }             -- CTRL + SHIFT + Backspace    
+    keys.removeRow      = { 1,    0,  0,    8 }             -- Remove Row CTRL+Backspace  
     
     keys.m0             = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
     keys.m25            = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
@@ -243,28 +234,7 @@ function seq:loadKeys( keySet )
     keys.m75            = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
     keys.off2           = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned    
     keys.renoiseplay    = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shpatdown      = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shpatup        = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shcoldown      = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shcolup        = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shblockdown    = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shblockup      = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned    
-    
-    keys.cutPattern     = { 1,    0,  0,    500000000000000000000000 }
-    keys.cutColumn      = { 1,    0,  1,    500000000000000000000000 }
-    keys.cutBlock2      = { 1,    1,  0,    500000000000000000000000 }
-    keys.copyPattern    = { 1,    0,  0,    500000000000000000000000 }
-    keys.copyColumn     = { 1,    0,  1,    500000000000000000000000 }
-    keys.copyBlock2     = { 1,    1,  0,    500000000000000000000000 }
-    keys.pastePattern   = { 1,    0,  0,    500000000000000000000000 }
-    keys.pasteColumn    = { 1,    0,  1,    500000000000000000000000 }
-    keys.pasteBlock2    = { 1,    1,  0,    500000000000000000000000 }
-    keys.patternOctDown = { 1,    0,  0,    500000000000000000000000.0 }
-    keys.patternOctUp   = { 1,    0,  0,    500000000000000000000000.0 }
-    keys.colOctDown     = { 1,    0,  1,    500000000000000000000000.0 }
-    keys.colOctUp       = { 1,    0,  1,    500000000000000000000000.0 }
-    keys.blockOctDown   = { 1,    1,  0,    500000000000000000000000.0 }
-    keys.blockOctUp     = { 1,    1,  0,    500000000000000000000000.0 }
+
     
     keys.shiftpgdn      = { 0,    0,  1,    1885824110 }    -- Shift + PgDn
     keys.shiftpgup      = { 0,    0,  1,    1885828464 }    -- Shift + PgUp
@@ -275,7 +245,6 @@ function seq:loadKeys( keySet )
       { 'Shift + Note', 'Advance column after entry' },
       { 'Insert/Backspace/-', 'Insert/Remove/Note OFF' },   
       { 'CTRL + Insert/Backspace', 'Insert Row/Remove Row' },
-      { 'CTRL + Shift + Ins/Bksp', 'Wrap Forward/Backward' },
       { 'Del/.', 'Delete' }, 
       { 'Space/Return', 'Play/Play From' },
       { 'CTRL + L', 'Loop pattern' },
@@ -289,8 +258,6 @@ function seq:loadKeys( keySet )
       { 'CTRL + (SHIFT) + Z', 'Undo / Redo' }, 
       { 'SHIFT + Alt + Up/Down', '[Res]olution Up/Down' },
       { 'SHIFT + Alt + Enter', '[Res]olution Commit' },  
-      { 'CTRL + Up/Down', '[Oct]ave up/down' },
-      { 'CTRL + Shift + Up/Down', '[Env]elope change' },
       { 'F4/F5', '[Adv]ance De/Increase' },
       { 'F2/F3', 'MIDI [out] down/up' },
       { 'F8/F11/F12', 'Stop / Options / Panic' },
@@ -300,8 +267,6 @@ function seq:loadKeys( keySet )
       { 'CTRL + N', 'Rename pattern' },
       { 'CTRL + R', 'Play notes' },
       { 'CTRL + +/-', 'Advanced col options' },
-      { 'CTRL + Shift + +/-', 'Add CC (adv mode)' },
-      { 'CTRL + Shift + A/P', 'Per channel CC/PC' },
       { '', '' },
       { 'Harmony helper', '' },      
       { 'F9', 'Toggle harmonizer' },
@@ -310,7 +275,7 @@ function seq:loadKeys( keySet )
       { 'Shift', 'Invert second note' },
       { 'CTRL + Shift + Alt + +/-', 'Shift root note' },
     }
-    
+        
   elseif keyset == "buzz" then
     --                    CTRL    ALT SHIFT Keycode
     keys.left           = { 0,    0,  0,    1818584692 }    -- <-
@@ -342,12 +307,6 @@ function seq:loadKeys( keySet )
     keys.copyBlock      = { 1,    0,  0,    3 }             -- CTRL + C
     keys.shiftItemUp    = { 0,    0,  1,    43 }            -- SHIFT + Num pad+
     keys.shiftItemDown  = { 0,    0,  1,    45 }            -- SHIFT + Num pad-
-    keys.octaveup       = { 0,    0,  0,    42 }            -- *
-    keys.octavedown     = { 0,    0,  0,    47 }            -- /
-    keys.scaleUp        = { 1,    1,  1,    267 }           -- CTRL + SHIFT + ALT + Num pad +
-    keys.scaleDown      = { 1,    1,  1,    269 }           -- CTRL + SHIFT + ALT + Num pad -    
-    keys.envshapeup     = { 1,    0,  1,    30064 }         -- CTRL + SHIFT + /\
-    keys.envshapedown   = { 1,    0,  1,    1685026670 }    -- CTRL + SHIFT + /\
     keys.help           = { 0,    0,  0,    26161 }         -- F1
     keys.outchanup      = { 1,    0,  0,    30064 }         -- CTRL + UP   (Buzz = next instrument)
     keys.outchandown    = { 1,    0,  0,    1685026670 }    -- CTRL + DOWN (Buzz = prev instrument)
@@ -373,21 +332,16 @@ function seq:loadKeys( keySet )
     keys.toggleRec      = { 0,    0,  0,    26167 }         -- f7 = record ...I wanted ALT + N = Play _N_otes, but it didn't work ¯\_(ツ)_/¯
     keys.showMore       = { 1,    0,  0,    11 }            -- CTRL + +
     keys.showLess       = { 1,    0,  0,    13 }            -- CTRL + -
-    keys.addCol         = { 1,    0,  1,    11 }            -- CTRL + Shift + +
-    keys.remCol         = { 1,    0,  1,    13 }            -- CTRL + Shift + -
     keys.tab            = { 0,    0,  0,    9 }             -- Tab
     keys.shifttab       = { 0,    0,  1,    9 }             -- SHIFT + Tab
     keys.follow         = { 1,    0,  0,    6 }             -- CTRL + F    
-    keys.deleteRow      = { 1,    0,  0,    6579564 }       -- Ctrl + Del
-    keys.addColAll      = { 1,    0,  1,    1 }             -- CTRL + Shift + A
-    keys.addPatchSelect = { 1,    0,  1,    16 }            -- CTRL + Shift + P    
+    keys.deleteRow      = { 1,    0,  0,    6579564 }       -- Ctrl + Del  
     keys.nextTrack      = { 1,    0,  1,    1919379572.0 }  -- CTRL + Shift + ->
     keys.prevTrack      = { 1,    0,  1,    1818584692.0 }  -- CTRL + Shift + <-
+    keys.hackeytrackey  = { 0,    0,  0,    13 }            -- Enter
     
     keys.insertRow      = { 1,    1,  0,    6909555 }       -- Insert row CTRL+Alt+Ins
-    keys.removeRow      = { 1,    1,  0,    8 }             -- Remove Row CTRL+Alt+Backspace
-    keys.wrapDown       = { 1,    0,  1,    6909555 }       -- CTRL + SHIFT + Ins
-    keys.wrapUp         = { 1,    0,  1,    8 }             -- CTRL + SHIFT + Backspace     
+    keys.removeRow      = { 1,    1,  0,    8 }             -- Remove Row CTRL+Alt+Backspace  
     
     keys.m0             = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
     keys.m25            = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
@@ -395,28 +349,7 @@ function seq:loadKeys( keySet )
     keys.m75            = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
     keys.off2           = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
     keys.renoiseplay    = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shpatdown      = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shpatup        = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shcoldown      = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shcolup        = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shblockdown    = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.shblockup      = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned    
     
-    keys.cutPattern     = { 1,    0,  0,    500000000000000000000000 }
-    keys.cutColumn      = { 1,    0,  1,    500000000000000000000000 }
-    keys.cutBlock2      = { 1,    1,  0,    500000000000000000000000 }
-    keys.copyPattern    = { 1,    0,  0,    500000000000000000000000 }
-    keys.copyColumn     = { 1,    0,  1,    500000000000000000000000 }
-    keys.copyBlock2     = { 1,    1,  0,    500000000000000000000000 }
-    keys.pastePattern   = { 1,    0,  0,    500000000000000000000000 }
-    keys.pasteColumn    = { 1,    0,  1,    500000000000000000000000 }
-    keys.pasteBlock2    = { 1,    1,  0,    500000000000000000000000 }
-    keys.patternOctDown = { 1,    0,  0,    500000000000000000000000.0 }
-    keys.patternOctUp   = { 1,    0,  0,    500000000000000000000000.0 }
-    keys.colOctDown     = { 1,    0,  1,    500000000000000000000000.0 }
-    keys.colOctUp       = { 1,    0,  1,    500000000000000000000000.0 }
-    keys.blockOctDown   = { 1,    1,  0,    500000000000000000000000.0 }
-    keys.blockOctUp     = { 1,    1,  0,    500000000000000000000000.0 }
     keys.closeTracker   = { 0,    0,  0,    500000000000000000000000 }      -- Unassigned
     keys.addColAll      = { 1,    0,  1,    1 }             -- CTRL + Shift + A
     keys.shiftpgdn      = { 0,    0,  1,    1885824110 }    -- Shift + PgDn
@@ -428,8 +361,7 @@ function seq:loadKeys( keySet )
       { 'Shift + Note', 'Advance column after entry' },
       { '`', 'Note OFF' },
       { 'Insert/Backspace', 'Insert/Remove line' },   
-      { 'CTRL + Alt + Insert/Backspace', 'Insert Row/Remove Row' },
-      { 'CTRL + Shift + Insert/Backspace', 'Wrap Forward/Backward' },      
+      { 'CTRL + Alt + Insert/Backspace', 'Insert Row/Remove Row' },    
       { 'Del/.', 'Delete' }, 
       { 'F5/F6', 'Play/Play from here' },
       { 'F8/F11/F12', 'Stop / Options / Panic' },
@@ -444,8 +376,6 @@ function seq:loadKeys( keySet )
       { 'CTRL + (SHIFT) + Z', 'Undo / Redo' }, 
       { 'SHIFT + Alt + Up/Down', '[Res]olution Up/Down' },
       { 'SHIFT + Alt + Return', '[Res]olution Commit' },  
-      { '*//', '[Oct]ave Up/Down' },     
-      { 'CTRL + Shift + Up/Down', '[Env]elope change' },
       { 'CTRL + F1/F2', '[Adv]ance De/Increase' },
       { 'CTRL + Up/Down', 'MIDI [out] Up/Down' },  
       { '-/+', 'Switch MIDI item' },
@@ -454,8 +384,6 @@ function seq:loadKeys( keySet )
       { 'CTRL + Backspace', 'Rename pattern' },
       { 'F7', 'Toggle note play' },
       { 'CTRL + +/-', 'Advanced col options' },
-      { 'CTRL + Shift + +/-', 'Add CC (adv mode)' },
-      { 'CTRL + Shift + A/P', 'Per channel CC/PC' },
       { '', '' },
       { 'Harmony helper', '' },      
       { 'F9', 'Toggle harmonizer' },
@@ -499,18 +427,13 @@ function seq:loadKeys( keySet )
     keys.copyBlock      = { 1,    0,  0,    3 }             -- CTRL + C
     keys.shiftItemUp    = { 0,    0,  1,    43 }            -- SHIFT + Num pad+
     keys.shiftItemDown  = { 0,    0,  1,    45 }            -- SHIFT + Num pad-
-    keys.octaveup       = { 0,    0,  0,    42 }            -- *
-    keys.octavedown     = { 0,    0,  0,    47 }            -- /
-    keys.scaleUp        = { 1,    1,  1,    267 }           -- CTRL + SHIFT + ALT + Num pad +
-    keys.scaleDown      = { 1,    1,  1,    269 }           -- CTRL + SHIFT + ALT + Num pad -    
-    keys.envshapeup     = { 1,    0,  1,    30064 }         -- CTRL + SHIFT + /\
-    keys.envshapedown   = { 1,    0,  1,    1685026670 }    -- CTRL + SHIFT + /\
+    keys.hackeytrackey  = { 0,    0,  0,    13 }            -- Enter
     keys.help           = { 0,    0,  0,    26161 }         -- F1
     keys.outchanup      = { 0,    0,  0,    43 }            -- +
     keys.outchandown    = { 0,    0,  0,    45 }            -- -
     keys.advancedown    = { 1,    0,  0,    13 }            -- CTRL + -
     keys.advanceup      = { 1,    0,  0,    11 }            -- CTRL + +
-    keys.setloop        = { 0,    0,  0,    13 }            -- Enter
+    keys.setloop        = { 0,    0,  1,    13 }            -- Enter
     keys.setloopstart   = { 1,    0,  0,    17 }            -- CTRL + Q (ditto)
     keys.setloopend     = { 1,    0,  0,    23 }            -- CTRL + W (ditto)
     keys.interpolate    = { 1,    0,  0,    9 }             -- CTRL + I
@@ -530,44 +453,11 @@ function seq:loadKeys( keySet )
     keys.toggleRec      = { 1,    0,  0,    18 }            -- CTRL + N
     keys.showMore       = { 1,    1,  0,    267 }           -- CTRL + Alt + +
     keys.showLess       = { 1,    1,  0,    269 }           -- CTRL + Alt + -
-    keys.addCol         = { 1,    0,  1,    11 }            -- CTRL + Shift + +
-    keys.remCol         = { 1,    0,  1,    13 }            -- CTRL + Shift + -
-    keys.addColAll      = { 1,    0,  1,    1 }             -- CTRL + Shift + A
-    keys.addPatchSelect = { 1,    0,  1,    16 }            -- CTRL + Shift + P
     keys.tab            = { 0,    0,  0,    9 }             -- Tab
     keys.shifttab       = { 0,    0,  1,    9 }             -- SHIFT + Tab
     keys.follow         = { 1,    0,  0,    6 }             -- CTRL + F
     
-    keys.off2           = { 0,    0,  0,    97 }            -- A
-    
-    keys.shpatdown      = { 1,    0,  0,    26161 }         -- CTRL + F1
-    keys.shpatup        = { 1,    0,  0,    26162 }         -- CTRL + F2
-    keys.shcoldown      = { 1,    0,  1,    26161 }         -- CTRL + SHIFT + F1
-    keys.shcolup        = { 1,    0,  1,    26162 }         -- CTRL + SHIFT + F2
-    keys.shblockdown    = { 1,    1,  0,    26161 }         -- CTRL + ALT  + F1      same as shiftItemDown
-    keys.shblockup      = { 1,    1,  0,    26162 }         -- CTRL + ALT  + F2      same as shiftItemUp
-    
-    keys.cutPattern     = { 1,    0,  0,    26163 }         -- CTRL + F3
-    keys.cutColumn      = { 1,    0,  1,    26163 }         -- CTRL + SHIFT + F3
-    keys.cutBlock2      = { 1,    1,  0,    26163 }         -- CTRL + ALT + F3
-    
-    keys.copyPattern    = { 1,    0,  0,    26164 }         -- CTRL + F4
-    keys.copyColumn     = { 1,    0,  1,    26164 }         -- CTRL + SHIFT + F4
-    keys.copyBlock2     = { 1,    1,  0,    26164 }         -- CTRL + ALT + F4
-
-    keys.pastePattern   = { 1,    0,  0,    26165 }         -- CTRL + F5
-    keys.pasteColumn    = { 1,    0,  1,    26165 }         -- CTRL + SHIFT + F5
-    keys.pasteBlock2    = { 1,    1,  0,    26165 }         -- CTRL + ALT + F5
-    
-    keys.patternOctDown = { 1,    0,  0,    6697265.0 }     -- CTRL + F11
-    keys.patternOctUp   = { 1,    0,  0,    6697266.0 }     -- CTRL + F12
-    
-    keys.colOctDown     = { 1,    0,  1,    6697265.0 }     -- CTRL + SHIFT + F11
-    keys.colOctUp       = { 1,    0,  1,    6697266.0 }     -- CTRL + SHIFT + F12
-    
-    keys.blockOctDown   = { 1,    1,  0,    6697265.0 }     -- CTRL + ALT + F11
-    keys.blockOctUp     = { 1,    1,  0,    6697266.0 }     -- CTRL + ALT + F12
-    
+    keys.off2           = { 0,    0,  0,    97 }            -- A      
     keys.deleteRow      = { 1,    0,  0,    6579564 }       -- Ctrl + Del
     
     keys.toggle         = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned    
@@ -581,8 +471,6 @@ function seq:loadKeys( keySet )
     
     keys.insertRow      = { 1,    0,  0,    6909555 }       -- Insert row CTRL+Ins
     keys.removeRow      = { 1,    0,  0,    8 }             -- Remove Row CTRL+Backspace
-    keys.wrapDown       = { 1,    0,  1,    6909555 }       -- CTRL + SHIFT + Ins
-    keys.wrapUp         = { 1,    0,  1,    8 }             -- CTRL + SHIFT + Backspace   
     
     keys.nextTrack      = { 1,    0,  1,    1919379572.0 }  -- CTRL + Shift + ->
     keys.prevTrack      = { 1,    0,  1,    1818584692.0 }  -- CTRL + Shift + <-
@@ -592,11 +480,10 @@ function seq:loadKeys( keySet )
       { '\\ or A', 'Note OFF' },
       { 'Insert/Backspace', 'Insert/Remove line' },
       { 'CTRL + Insert/Backspace', 'Insert Row/Remove Row' },     
-      { 'Del/Ctrl+Del', 'Delete/Delete Row' }, 
-      { 'CTRL + Shift + Insert/Backspace', 'Wrap Forward/Backward' },      
+      { 'Del/Ctrl+Del', 'Delete/Delete Row' },     
       { 'Space/Shift+Space', 'Play / Play From' },
       { 'Ctrl + O / Escape', 'Options / Stop all notes' },
-      { 'Enter', 'Loop pattern' },
+      { 'Shift + Enter', 'Loop pattern' },
       { 'CTRL + Q/W', 'Loop start/end' },
       { 'Shift + +/-', 'Transpose selection' },
       { 'CTRL + B/E', 'Selection Begin/End' },
@@ -607,28 +494,14 @@ function seq:loadKeys( keySet )
       { 'CTRL + (SHIFT) + Z', 'Undo / Redo' }, 
       { 'SHIFT + Alt + Up/Down', '[Res]olution Up/Down' },
       { 'SHIFT + Alt + Return', '[Res]olution Commit' },  
-      { '*//', '[Oct]ave Up/Down' },     
-      { 'CTRL + Shift + Up/Down', '[Env]elope change' },
       { 'CTRL + -/+ | SHIFT + -/=', '[Adv]ance De/Increase' },
       { '+/-', 'MIDI [out] Up/Down' },  
       { 'CTRL + Up/Down', 'Switch MIDI item' },
       { 'CTRL + Shift + Return', 'Duplicate pattern' },
       { 'CTRL + SHIFT + N', 'Rename pattern' },
       { 'CTRL + R', 'Toggle note play' },
-      { 'CTRL + Alt + +/-', 'Advanced col options' },
-      { 'CTRL + Shift + +/-', 'Add CC (adv mode)' },
       { 'F9/F10/F11/F12', 'Goto 0, 25, 50 and 75%%' },
       { 'F8', 'Close tracker' },
-      { '---', '' },
-      { 'CTRL + F1/F2', 'Shift pattern down/up' },
-      { 'CTRL + Shift + F1/F2', 'Shift column down/up' },
-      { 'CTRL + Alt + F1/F2', 'Shift block down/up' },
-      { 'CTRL + F3/F4/F5', 'Cut/Copy/Paste pattern' },
-      { 'CTRL + Shift + F3/F4/F5', 'Cut/Copy/Paste column' },
-      { 'CTRL + Alt + F3/F4/F5', 'Cut/Copy/Paste block' },
-      { 'CTRL + F11/F12', 'Pattern octave up' },
-      { 'CTRL + Shift + F11/F12', 'Column octave up' },      
-      { 'CTRL + Alt + F11/F12', 'Block octave up' },    
       { '---', '' },      
       { 'CTRL + H', 'Toggle harmonizer' },
       { 'CTRL + Click', 'Insert chord' },
@@ -1020,8 +893,9 @@ end
 
 -- Find all MIDI items
 function seq:fetchPatterns()
-  poolGUIDs = {}
-  trackItems = {}
+  local reaper      = reaper
+  local poolGUIDs   = {}
+  local trackItems  = {}
   
   local c = 0
   local maxloc = {}
@@ -1051,14 +925,15 @@ function seq:fetchPatterns()
     end
   end
   
-  self.poolGUIDs = poolGUIDs
+  self.poolGUIDs  = poolGUIDs
   self.trackItems = trackItems
-  self.maxloc = maxloc
+  self.maxloc     = maxloc
 end
   
 function seq:copyUnknownToPool()
-  local trackItems = self.trackItems
-  local poolGUIDs = self.poolGUIDs
+  local reaper      = reaper
+  local trackItems  = self.trackItems
+  local poolGUIDs   = self.poolGUIDs
   
   self:pushPosition()
 
@@ -1099,6 +974,7 @@ function seq:deleteFromPool(trackidx, poolidx)
   local poolTable = poolGUIDs[GUID] -- { mediaItem, track, take }
   local mediaItem = poolTable[1]
   local cTrack    = poolTable[2]
+  local reaper    = reaper
   
   --------------------------------------------------
   -- Find corresponding automation GUIDs to delete
@@ -1263,6 +1139,7 @@ end
 
 -- Fetch the track names and construct a table which has the tracks.
 function seq:fetchTracks()
+  local reaper        = reaper
   local trackToIndex  = {}
   local trackTitles   = {}
   local cellw         = self.cellw
@@ -1337,13 +1214,19 @@ function seq:populateSequencer()
   self.highlight    = highlight
 end
 
-function seq:updateData()
+function seq:_updateData()
   seq:computeSize()
   seq:fetchTracks()
   seq:fetchPatterns()
   seq:copyUnknownToPool()
   seq:buildPatternList()
   seq:populateSequencer()
+end
+
+function seq:updateData()
+  reaper.PreventUIRefresh(1)
+  seq:_updateData()
+  reaper.PreventUIRefresh(-1)
 end
 
 local function triangle( xc, yc, size, ori )
@@ -1429,12 +1312,13 @@ function seq:updateGUI()
   end 
    
   -- Dark alternating colors
+  offs = - (scrolly - 8*math.floor(scrolly/8))
   gfx.set( table.unpack( colors.linecolor2 ) )
-  for iy = 6,ymax,8 do
+  for iy = 6+offs,ymax+2,8 do
     gfx.rect( xOrigin, yOrigin + fh * iy, fw, fh )
   end
   gfx.set( table.unpack( colors.linecolor5 ) )
-  for iy = 2,ymax,8 do
+  for iy = 2+offs,ymax+2,8 do
     gfx.rect( xOrigin, yOrigin + fh * iy, fw, fh )
   end
   
@@ -1579,13 +1463,13 @@ function seq:updateGUI()
       triangle(xc, yc, 5, 1)    
   else
       gfx.set(table.unpack(colors.linecolor4))
-      gfx.rect(xOrigin + fw + 1, yOrigin + 2 * fh + fh * playLoc, tw, 2)
+      gfx.rect(xOrigin + fw + 1, yOrigin + 2 * fh + fh * playLoc - 1, tw, 1)
   end
 
   local markerLoc = reaper.GetCursorPosition() / rps - scrolly
   if ( markerLoc > 0 and markerLoc < height ) then
     gfx.set(table.unpack(colors.linecolor4))
-    gfx.rect(xOrigin + fw + 1, yOrigin + 2 * fh + fh * markerLoc, tw, 2)
+    gfx.rect(xOrigin + fw + 1, yOrigin + 2 * fh + fh * markerLoc - 1, tw, 1)
   end
   
   local lStart, lEnd = reaper.GetSet_LoopTimeRange2(0, false, 1, 0, 0, false)
@@ -1753,10 +1637,11 @@ function seq:mend(track, row)
   end
 end
 
-function seq:deleteRange(track, row)
-  local trackItems = self.trackItems
-  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
-  local eps = self.cfg.eps
+function seq:deleteRange(track, row, tcnt, rcnt, noupdate)
+  local trackItems  = self.trackItems
+  local rps         = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local eps         = self.cfg.eps
+  local reaper      = reaper
   
   -- Delete 
   local cTrack = reaper.GetTrack(0, track)
@@ -1795,7 +1680,9 @@ function seq:deleteRange(track, row)
     end
   end
   
-  seq:updateData()
+  if ( not noupdate ) then
+    seq:updateData()
+  end
 end
 
 function seq:delete()
@@ -1803,19 +1690,33 @@ function seq:delete()
   reaper.UpdateArrange()
   
   if ( self.ypos > 0 ) then
-    seq:mend(self.xpos, self.ypos-1)
+    self:mend(self.xpos, self.ypos-1)
   end
-  reaper.UpdateArrange()
 end
 
 function seq:backspace()
   self:deleteRange(self.xpos, self.ypos, 0, 0)
   self:insert(nil, self.ypos+1, -1)
   if ( self.ypos > 0 ) then
-    seq:mend(self.xpos, self.ypos-1)
+    self:mend(self.xpos, self.ypos-1)
   end  
+end
+
+-- This has its own function since calling backspace for each cell was slow
+function seq:backspaceRow()
+  for i=0,reaper.CountTracks()-1 do
+    self.xpos = i
+    self:deleteRange(self.xpos, self.ypos, 0, 0, 1)
+  end
+  self:updateData()
   
-  reaper.UpdateArrange()
+  for i=0,reaper.CountTracks()-1 do
+    self.xpos = i
+    self:insert(nil, self.ypos+1, -1)
+    if ( self.ypos > 0 ) then
+      self:mend(self.xpos, self.ypos-1)
+    end
+  end
 end
 
 function seq:insert(xpos, ypos, sign)
@@ -1866,8 +1767,6 @@ function seq:insert(xpos, ypos, sign)
       end
     end
   end
-  
-  reaper.UpdateArrange()
 end
 
 function seq:beginBlock()
@@ -2267,9 +2166,15 @@ function seq:processMouseActions()
   local left, right, middle = mouseStatus()
   local ctime               = reaper.time_precise()
   local lastLeft            = self.lastLeft
+  local rps                 = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   
   if ( gfx.mouse_wheel ~= 0 ) then
-    self.ypos = self.ypos - math.floor( gfx.mouse_wheel / 120 )
+    local scFactor = 1
+    if ( ( gfx.mouse_cap & 8 ) == 0 ) then
+      scFactor = self.cfg.largeScroll
+    end
+  
+    self.ypos = self.ypos - scFactor * math.floor( gfx.mouse_wheel / 120 )
     self:resetShiftSelect()
     gfx.mouse_wheel = 0
   end 
@@ -2279,13 +2184,15 @@ function seq:processMouseActions()
     elseif ( gfx.mouse_y > fh and gfx.mouse_y < 2*fh ) then
       -- Mute / Solo handling
       local cTrack = math.floor( gfx.mouse_x / fw )
-      if ( lastLeft == 0 ) then
+      if ( lastLeft == 0 and cTrack > 0 ) then
         if ( gfx.mouse_x - fw * cTrack ) < 0.5 * fw then
           self:toggleMute(scrollx + cTrack-1)
         else
           self:toggleSolo(scrollx + cTrack-1)
         end
       end
+    elseif ( gfx.mouse_x < fw ) then
+      reaper.SetEditCurPos2(0, ( math.floor(gfx.mouse_y / fh) - 2 ) * rps, true, false)
     elseif ( gfx.mouse_x < fw * (fov.width+2) ) then
       -- Click inside the grid
       local Inew, Jnew = seq:calcGridCoord()
@@ -2322,6 +2229,7 @@ function seq:processMouseActions()
                 reaper.Undo_OnStateChange2(0, "Sequencer: Delete from pool")
                 reaper.MarkProjectDirty(0)
                 self:deleteFromPool(self.xpos, i)
+                reaper.UpdateArrange()
               end
             end
           end
@@ -2402,7 +2310,9 @@ local function updateLoop()
   
   if lastChar ~= -1 then
     if ( seq.renaming == 0 ) then
-      if inputs('left') then
+      if inputs('hackeytrackey') then
+        seq:startHT(seq.xpos, seq.ypos)
+      elseif inputs('left') then
         seq.xpos = seq.xpos - 1
         seq:resetShiftSelect()
       elseif inputs('right') then
@@ -2421,12 +2331,46 @@ local function updateLoop()
         seq.ypos = seq.ypos + 1
         seq:resetShiftSelect()
       elseif inputs('insert') then
+        reaper.Undo_OnStateChange2(0, "Sequencer: Insert (Ins)")
+        reaper.MarkProjectDirty(0)
+        seq:pushPosition()
         seq:insert()
         if ( seq.ypos > 0 ) then
           seq:mend(seq.xpos, seq.ypos-1)
         end
+        seq:popPosition()
+        reaper.UpdateArrange()
+      elseif inputs('insertRow') then
+        reaper.Undo_OnStateChange2(0, "Sequencer: Insert Row (InsRow)")
+        reaper.MarkProjectDirty(0)
+        seq:pushPosition()
+        local oldx = seq.xpos
+        for i=0,reaper.CountTracks()-1 do
+          seq.xpos = i
+          seq:insert()
+          if ( seq.ypos > 0 ) then
+            seq:mend(seq.xpos, seq.ypos-1)
+          end
+        end
+        seq.xpos = oldx
+        seq:popPosition()
+        reaper.UpdateArrange()
+      elseif inputs('removeRow') then
+        reaper.Undo_OnStateChange2(0, "Sequencer: Remove Row (RemRow)")
+        reaper.MarkProjectDirty(0)
+        seq:pushPosition()
+        local oldx = seq.xpos
+        seq:backspaceRow()
+        seq.xpos = oldx
+        seq:popPosition()
+        reaper.UpdateArrange()
       elseif inputs('remove') then
-        seq:backspace()      
+        reaper.Undo_OnStateChange2(0, "Sequencer: Remove (Rem)")
+        reaper.MarkProjectDirty(0)
+        seq:pushPosition()
+        seq:backspace()   
+        seq:popPosition()
+        reaper.UpdateArrange()
       elseif inputs('pgup') then
         seq.ypos = seq.ypos - seq.cfg.page
         seq:resetShiftSelect()
@@ -2483,20 +2427,37 @@ local function updateLoop()
         reaper.Undo_OnStateChange2(0, "Sequencer: Rename (Ren)")
         reaper.MarkProjectDirty(0)
         seq:renamePattern()
+        reaper.UpdateArrange()
       elseif inputs('undo') then
         reaper.Undo_DoUndo2(0) 
       elseif inputs('redo') then
         reaper.Undo_DoRedo2(0)
+      elseif inputs('deleteRow') then
+        reaper.Undo_OnStateChange2(0, "Sequencer: Delete Row (DelRow)")
+        reaper.MarkProjectDirty(0)
+        seq:pushPosition()
+        local oldx = seq.xpos
+        for i=0,reaper.CountTracks()-1 do
+          seq.xpos = i
+          seq:delete()
+        end
+        seq.xpos = oldx
+        seq:popPosition()
+        reaper.UpdateArrange()
       elseif ( inputs('delete') ) then
-        modified = 1
         reaper.Undo_OnStateChange2(0, "Sequencer: Delete (Del)")
         reaper.MarkProjectDirty(0)
+        seq:pushPosition()
         seq:delete()
+        seq:popPosition()
+        reaper.UpdateArrange()
       elseif ( inputs('delete2') ) then
-        modified = 1
         reaper.Undo_OnStateChange2(0, "Sequencer: Delete (Del)")
         reaper.MarkProjectDirty(0)
+        seq:pushPosition()
         seq:delete()
+        seq:popPosition()
+        reaper.UpdateArrange()
         seq.ypos = seq.ypos + seq.advance
       elseif ( inputs('playfrom') ) then
         seq:gotoRow(seq.ypos)
@@ -2504,8 +2465,10 @@ local function updateLoop()
       elseif ( inputs('toggle') ) then
         reaper.Main_OnCommand(40044, 0)
       elseif ( seq.charCodes[lastChar] ) then
+        seq:pushPosition()
         seq:addItem( seq.charCodes[ lastChar ] )
         lastChar = 0
+        seq:popPosition()
       end
     elseif ( seq.renaming == 1 ) then
       -- Renaming pattern
