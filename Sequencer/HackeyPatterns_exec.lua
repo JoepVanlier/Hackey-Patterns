@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.18
+@version 0.19
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,9 @@
 
 --[[
  * Changelog:
+ * v0.19 (2018-10-07)
+   + Fixed issue with pattern precision when calculating pattern display.
+   + Added global eps parameter rather than using hardcoded values everywhere.
  * v0.18 (2018-10-07)
    + Add pattern deletion button (deletes it from the pool and song)
    + Added undo and redo
@@ -80,7 +83,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.18"
+scriptName = "Hackey Patterns v0.19"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -112,6 +115,7 @@ seq.cfg.boxsize       = 8
 seq.advance       = 1
 
 seq.cfg.zoom      = 1
+seq.cfg.eps       = 0.000001
 
 seq.cp = {}
 seq.cp.lastShiftCoord = nil
@@ -947,6 +951,7 @@ end
 
 function seq:uniqueMIDI(track, row)
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local eps = self.cfg.eps
 
   --41613  Item: Remove active take from MIDI source data pool (AKA un-pool, un-ghost, make unique)
   reaper.SelectAllMediaItems(0, false)
@@ -955,7 +960,7 @@ function seq:uniqueMIDI(track, row)
   for i,v in pairs(trackItems) do
     if ( v[2] == cTrack ) then
       local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
-      if ( math.floor( pos / rps + 0.0001 ) == row ) then
+      if ( math.floor( pos / rps + eps ) == row ) then
         reaper.SetMediaItemInfo_Value( v[1], "B_UISEL", 1 )
       end
     end
@@ -970,12 +975,13 @@ function seq:uniqueAutomation(track, row)
 
   -- Select only the automation items of interest.
   local selected
+  local eps = self.cfg.eps
   if ( self.cfg.automation == 1 ) then
     for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
       local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
       for i=0,reaper.CountAutomationItems(trackEnv)-1 do
         local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
-        if ( math.floor( d_pos / rps + 0.0001 ) == row ) then
+        if ( math.floor( d_pos / rps + eps ) == row ) then
           reaper.Main_OnCommand(40769, 0) -- Deselect all items
           reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 1, true)
           reaper.SetEditCurPos2(0, d_pos, false, false)
@@ -1280,6 +1286,7 @@ function seq:populateSequencer()
   local patterns      = {}
   local highlight     = {}
   local trackToIndex  = self.trackToIndex
+  local eps           = self.cfg.eps
   
   -- Go over all the media items we found that weren't in the pool
   --   trackItems[i] = { mediaItem, track, take, GUID }
@@ -1296,8 +1303,8 @@ function seq:populateSequencer()
     local trackIdx = trackToIndex[reaper.GetMediaItemTrack(mediaItem)]
     local pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
     local len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")    
-    local ystart = math.floor(pos/dy)
-    local yend = math.ceil((pos+len)/dy)
+    local ystart = math.floor(pos/dy + eps)
+    local yend = math.ceil((pos+len)/dy - eps)
     for q = ystart+1,yend-1 do
       patterns[trackIdx][q] = -2
     end
@@ -1307,9 +1314,8 @@ function seq:populateSequencer()
     local trackGUID = v[4]
     local pos = reaper.GetMediaItemInfo_Value(v[1], "D_POSITION")
     local len = reaper.GetMediaItemInfo_Value(v[1], "D_LENGTH")
-
-    local ystart = math.floor(pos/dy)
-    local yend = math.ceil((pos+len)/dy)
+    local ystart = math.floor(pos/dy + eps)
+    local yend = math.ceil((pos+len)/dy - eps)
     local q = ystart
     local trackIdx = trackToIndex[v[2]]
     patterns[trackIdx][q] = guidToPatternIdx[trackIdx][trackGUID]
@@ -1723,11 +1729,12 @@ function seq:mend(track, row)
 
   -- Lengthen the indexed midi item
   local cTrack = reaper.GetTrack(0, track)
+  local eps = self.cfg.eps
   for i,v in pairs(trackItems) do
     if ( v[2] == cTrack ) then
       local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
       local len = reaper.GetMediaItemInfo_Value( v[1], "D_LENGTH" )
-      if ( math.floor( pos / rps + 0.0001 ) <= row and math.floor( (pos+len)/rps + 0.0001 ) >= row ) then
+      if ( math.floor( pos / rps + eps ) <= row and math.floor( (pos+len)/rps + eps ) >= row ) then
         local GUID = v[4]
         local poolItem = poolGUIDs[GUID]
         if ( poolItem ) then
@@ -1746,13 +1753,14 @@ end
 function seq:deleteRange(track, row)
   local trackItems = self.trackItems
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local eps = self.cfg.eps
   
   -- Delete 
   local cTrack = reaper.GetTrack(0, track)
   for i,v in pairs(trackItems) do
     if ( v[2] == cTrack ) then
       local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
-      if ( math.floor( pos / rps + 0.0001 ) == row ) then
+      if ( math.floor( pos / rps + eps ) == row ) then
         reaper.DeleteTrackMediaItem(v[2], v[1])
       end
     end
@@ -1765,7 +1773,7 @@ function seq:deleteRange(track, row)
       local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
       for i=0,reaper.CountAutomationItems(trackEnv)-1 do
         local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
-        if ( math.floor( d_pos / rps + 0.0001 ) == row ) then
+        if ( math.floor( d_pos / rps + eps ) == row ) then
           --reaper.DeleteTrackMediaItem(v[2], v[1])
           if not deletedAutomation then
             --reaper.SelectAllMediaItems(0, false)
@@ -1810,6 +1818,7 @@ end
 function seq:insert(xpos, ypos, sign)
   local cTrack = reaper.GetTrack(0, xpos or self.xpos)
   local row = ypos or self.ypos
+  local eps = self.cfg.eps
   
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local delta = (sign or 1) * rps
@@ -1821,11 +1830,11 @@ function seq:insert(xpos, ypos, sign)
     if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
       local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
       if ( d_pos < postMusic ) then
-        if ( math.floor( d_pos / rps + 0.0001 ) >= row ) then
+        if ( math.floor( d_pos / rps + eps ) >= row ) then
           reaper.SetMediaItemInfo_Value(mediaItem, "D_POSITION", d_pos + delta)
         else
           local d_len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")
-          if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) > row ) then
+          if ( math.floor( (d_pos + d_len) / rps + eps ) > row ) then
             -- Grow/Shrink this one!
             reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", d_len + delta)
           end
@@ -1841,11 +1850,11 @@ function seq:insert(xpos, ypos, sign)
       for i=0,reaper.CountAutomationItems(trackEnv)-1 do
         local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
         if ( d_pos < postMusic ) then
-          if ( math.floor( d_pos / rps + 0.0001 ) >= row ) then
+          if ( math.floor( d_pos / rps + eps ) >= row ) then
             reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", d_pos + delta, true)
           else
             local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)
-            if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) > row ) then
+            if ( math.floor( (d_pos + d_len) / rps + eps ) > row ) then
               -- Grow/Shrink this one!
               reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", d_len + delta, true)
             end
@@ -1903,15 +1912,16 @@ function seq:terminateAt(track, row)
   local cTrack = reaper.GetTrack(0, track or self.xpos)
   
   -- Media items
+  local eps = self.cfg.eps
   for i=0,reaper.CountMediaItems(0)-1 do
     local mediaItem = reaper.GetMediaItem(0, i)
     -- Only deal with media items on this track
     if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
       local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
       if ( d_pos < postMusic ) then
-        if ( math.floor( d_pos / rps + 0.0001 ) < row ) then
+        if ( math.floor( d_pos / rps + eps ) < row ) then
           local d_len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")
-          if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) >= row ) then
+          if ( math.floor( (d_pos + d_len) / rps + eps ) >= row ) then
             reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", row*rps - d_pos, true)
           end
         end
@@ -1920,15 +1930,16 @@ function seq:terminateAt(track, row)
   end
   
   -- Automation items
+  local eps = self.cfg.eps
   if ( self.cfg.automation == 1 ) then
     for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
       local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
       for i=0,reaper.CountAutomationItems(trackEnv)-1 do
         local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
         if ( d_pos < postMusic ) then
-          if ( math.floor( d_pos / rps + 0.0001 ) < row ) then
+          if ( math.floor( d_pos / rps + eps ) < row ) then
             local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)
-            if ( math.floor( (d_pos + d_len) / rps + 0.0001 ) >= row ) then
+            if ( math.floor( (d_pos + d_len) / rps + eps ) >= row ) then
               -- Grow/Shrink this one!
               reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", row*rps - d_pos, true)
             end
@@ -1945,13 +1956,14 @@ function seq:findNextItem(track, row)
 
   local minDist = 10000000000000
   local item = nil
+  local eps = self.cfg.eps
   for i=0,reaper.CountMediaItems(0)-1 do
     local mediaItem = reaper.GetMediaItem(0, i)
     -- Only deal with media items on this track
     if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
       local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
       if ( d_pos < postMusic ) then
-        if ( math.floor( d_pos / rps + 0.0001 ) > row ) then
+        if ( math.floor( d_pos / rps + eps ) > row ) then
           if ( d_pos < minDist ) then
             minDist = d_pos - row*rps
             item = mediaItem
@@ -2040,6 +2052,7 @@ function seq:gotoRow(row)
 end
 
 function seq:startHT(track, row)
+  local eps = self.cfg.eps
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local cTrack = reaper.GetTrack(0, track)
   for i=0,reaper.CountMediaItems(0)-1 do
@@ -2047,7 +2060,7 @@ function seq:startHT(track, row)
     -- Only deal with media items on this track
     if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
       local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
-      if ( math.floor( d_pos / rps + 0.0001 ) == row ) then
+      if ( math.floor( d_pos / rps + eps ) == row ) then
         reaper.SetProjExtState(0, "MVJV001", "initialiseAtTrack", track)
         reaper.SetProjExtState(0, "MVJV001", "initialiseAtRow", row*rps)
         self:callScript(hackeyTrackey)
@@ -2061,6 +2074,7 @@ function seq:rename(track, row)
   local name, GUID
   local cTrack = reaper.GetTrack(0, track)
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local eps = self.cfg.eps
   
   for i=0,reaper.CountMediaItems(0)-1 do
     local mediaItem = reaper.GetMediaItem(0, i)
@@ -2068,7 +2082,7 @@ function seq:rename(track, row)
     if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
       local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
       if ( d_pos < postMusic ) then
-        if ( math.floor( d_pos / rps + 0.0001 ) == row ) then
+        if ( math.floor( d_pos / rps + eps ) == row ) then
           local take = reaper.GetActiveTake(mediaItem)
           if ( reaper.TakeIsMIDI(take) ) then
             local retval
