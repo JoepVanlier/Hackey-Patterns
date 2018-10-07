@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.14
+@version 0.15
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -25,6 +25,11 @@
 
 --[[
  * Changelog:
+ * v0.15 (2018-10-06)
+   + Zero is zero ;)
+   + Added play from / play toggle.
+   + Display current play position.
+   + Added looping commands (CTRL + Q/W in default layout).
  * v0.14 (2018-10-06)
    + Middle mouse uniqueifies a pattern (un-ghost/un-pool).
  * v0.13 (2018-10-06)
@@ -67,7 +72,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.13"
+scriptName = "Hackey Patterns v0.15"
 postMusic = 500
 
 seq             = {}
@@ -107,7 +112,7 @@ seq.chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 function initCharMap()
   seq.charCodes = {}
   local j = 0
-  for i=48,57 do
+  for i=47,56 do
     seq.charCodes[i] = j
     j = j + 1
   end
@@ -1238,6 +1243,14 @@ function seq:updateData()
   seq:populateSequencer()
 end
 
+local function triangle( xc, yc, size, ori )
+    local gfx = gfx
+    ori = ori or 1
+    gfx.line(xc-size,yc-ori*size,xc,yc+ori*size)
+    gfx.line(xc,yc+ori*size,xc+size,yc-ori*size)
+    gfx.line(xc+size,yc-ori*size,xc-size,yc-ori*size)
+end
+
 function seq:updateGUI()
   local nTracks       = reaper.CountTracks(0)
   local patternNames  = self.patternNames
@@ -1421,7 +1434,50 @@ function seq:updateGUI()
     gfx.x = X
     gfx.y = (2+i) * fh
     gfx.printf( "%s. %s", chars:sub(i,i), v )
-  end  
+  end
+  
+  ------------------------------
+  -- Play location indicator
+  ------------------------------
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local playLoc = self:getPlayLocation() / rps - scrolly
+
+  gfx.x = xOrigin + (fov.width+1)*fw + 3
+  local tw = fw * (xEnd-xStart+1) - 1
+  local xc = 25
+  local yc = 11
+  if ( playLoc < 0 ) then   
+      gfx.set(table.unpack(colors.linecolor3))     
+      triangle(xc, yc+1, 3, -1)        
+      gfx.set(table.unpack(colors.linecolor3))
+      triangle(xc, yc, 5, -1)
+  elseif ( playLoc > height ) then
+      gfx.set(table.unpack(colors.linecolor3))
+      triangle(xc, yc-1, 3, 1)           
+      gfx.set(table.unpack(colors.linecolor3))
+      triangle(xc, yc, 5, 1)    
+  else
+      gfx.set(table.unpack(colors.linecolor4))
+      gfx.rect(xOrigin + fw + 1, yOrigin + 2 * fh + fh * playLoc, tw, 2)
+  end
+
+  local markerLoc = reaper.GetCursorPosition() / rps - scrolly
+  if ( markerLoc > 0 and markerLoc < height ) then
+    gfx.set(table.unpack(colors.linecolor4))
+    gfx.rect(xOrigin + fw + 1, yOrigin + 2 * fh + fh * markerLoc, tw, 2)
+  end
+  
+  local lStart, lEnd = reaper.GetSet_LoopTimeRange2(0, false, 1, 0, 0, false)
+  lStart = lStart / rps - scrolly
+  lEnd = lEnd / rps - scrolly    
+  if ( ( lStart >= 0 ) and ( lStart <= height ) ) then
+    gfx.set(table.unpack(colors.loopcolor))
+    gfx.rect(xOrigin + fw + 1, yOrigin + 2 * fh + fh * lStart, tw, 1)
+  end
+  if ( ( lEnd >= 0 ) and ( lEnd <= height ) ) then
+    gfx.set(table.unpack(colors.loopcolor))
+    gfx.rect(xOrigin + fw + 1, yOrigin + 2 * fh + fh * lEnd, tw, 1)
+  end
 end
 
 ------------------------------
@@ -1864,6 +1920,13 @@ function seq:updateMidiName(inGUID, name)
   end
 end
 
+function seq:gotoRow(row)
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local loc = reaper.AddProjectMarker(0, 0, self.ypos * rps, 0, "", -1)
+  reaper.GoToMarker(0, loc, 0)
+  reaper.DeleteProjectMarker(0, loc, 0)
+end
+
 function seq:rename(track, row)
   -- Media items
   local name, GUID
@@ -1956,6 +2019,14 @@ function seq:toggleSolo(trackidx)
   end
 end
 
+function seq:getPlayLocation()
+  if ( reaper.GetPlayState() == 0 ) then
+    return reaper.GetCursorPosition()
+  else
+    return reaper.GetPlayPosition()
+  end
+end
+
 function seq:calcGridCoord()
   local fw            = self.cellw
   local fh            = self.cellh
@@ -1971,6 +2042,34 @@ function seq:calcGridCoord()
   local Jnew = math.floor( gfx.mouse_y / fh ) + scrolly
   
   return Inew, Jnew
+end
+
+function seq:setLoopToPattern()
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  
+  reaper.GetSet_LoopTimeRange2(0, true, true, self.ypos*rps, (self.ypos+1)*rps, true)
+end
+
+function seq:setLoopStart()
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local lPos, lEnd = reaper.GetSet_LoopTimeRange2(0, false, 1, 0, 0, false)
+  
+  lPos = self.ypos*rps
+  if ( lPos >= lEnd ) then
+    lEnd = lPos + rps
+  end
+  reaper.GetSet_LoopTimeRange2(0, true, true, lPos, lEnd, true)
+end
+
+function seq:setLoopEnd()
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local lPos, lEnd = reaper.GetSet_LoopTimeRange2(0, false, 1, 0, 0, false)
+  
+  lEnd = self.ypos * rps
+  if ( lPos >= lEnd ) then
+    lPos = lEnd - rps
+  end
+  reaper.GetSet_LoopTimeRange2(0, true, true, lPos, lEnd, true)    
 end
 
 function seq:processMouseActions()
@@ -2137,6 +2236,12 @@ local function updateLoop()
         seq.ypos = seq.rows
         seq:forceCursorInRange()
         seq:dragBlock()
+      elseif inputs('setloopstart') then
+        seq:setLoopStart()
+      elseif inputs('setloopend') then
+        seq:setLoopEnd()
+      elseif inputs('setloop') then
+        seq:setLoopToPattern()
       elseif inputs('rename') then
         seq:renamePattern()
       elseif ( inputs('delete') ) then
@@ -2148,6 +2253,11 @@ local function updateLoop()
         reaper.Undo_OnStateChange2(0, "Tracker: Delete (Del)")
         seq:delete()
         seq.ypos = seq.ypos + seq.advance
+      elseif ( inputs('playfrom') ) then
+        seq:gotoRow(seq.ypos)
+        reaper.Main_OnCommand(40044, 0)
+      elseif ( inputs('toggle') ) then
+        reaper.Main_OnCommand(40044, 0)
       elseif ( seq.charCodes[lastChar] ) then
         seq:addItem( seq.charCodes[ lastChar ] )
         lastChar = 0
@@ -2210,7 +2320,7 @@ local function Main()
   seq:loadColors("renoiseB")
   seq:loadColors( "buzz" ) 
   seq:loadKeys( "default" )
-  gfx.init("Sequencer", width, height, 0, xpos, ypos)
+  gfx.init(scriptName, width, height, 0, xpos, ypos)
   seq:computeSize()
   
   reaper.defer(updateLoop)
