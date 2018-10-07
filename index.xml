@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="0e4022fa705e90d472ea50fff7b34d7d49776120">
+<index version="1" name="Hackey Sequencer" commit="9761f73d1201d7dbc9cc80f6fa139c2c2346c8ae">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -87,6 +87,11 @@ here
 + Added undo and redo
 + Added usage highlighting when hovering over patterns in pattern list]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/0e4022fa705e90d472ea50fff7b34d7d49776120/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.19" author=": Joep Vanlier" time="2018-10-07T16:43:05Z">
+        <changelog><![CDATA[+ Fixed issue with pattern precision when calculating pattern display.
++ Added global eps parameter rather than using hardcoded values everywhere.]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/9761f73d1201d7dbc9cc80f6fa139c2c2346c8ae/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
