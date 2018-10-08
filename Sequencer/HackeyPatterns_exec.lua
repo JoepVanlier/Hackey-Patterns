@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.21
+@version 0.22
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,9 @@
 
 --[[
  * Changelog:
+ * v0.22 (2018-10-08)
+   + Added some checking for empty tables
+   + Preserve ordering
  * v0.21 (2018-10-07)
    + Fix issue with pattern coloring.
    + Default mousewheel scrolls 4, shift mousewheel scrolls 1.
@@ -87,7 +90,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.21"
+scriptName = "Hackey Patterns v0.22"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -818,6 +821,12 @@ function tprint (tbl, indent, maxindent, verbose)
   end
 end 
 
+function isempty(t)
+    for _,_ in pairs(t) do
+        return false
+    end
+    return true
+end
 
 -- Prep process
 function seq:selectMediaItem(item)
@@ -1058,7 +1067,18 @@ function seq:buildPatternList()
     end
   end
   
-  for i,v in pairs( self.poolGUIDs ) do
+  -- Sort the GUID table
+  local sortedKeys = {}
+  for i in pairs(self.poolGUIDs) do
+    table.insert(sortedKeys, i)
+  end
+  table.sort(sortedKeys)
+  
+  local poolGUIDs = self.poolGUIDs
+  for j,w in pairs( sortedKeys ) do
+    i = w
+    v = poolGUIDs[w]
+    
     trackidx = trackToIndex[v[2]]
     index = idx[trackidx]
   
@@ -1070,8 +1090,10 @@ function seq:buildPatternList()
       local str = reaper.GetTakeName(v[3])
       if ( str == "untitled MIDI item" ) then
         patternNames[trackidx][index] = string.format("%02d", index)
+      elseif ( str == "" ) then
+        patternNames[trackidx][index] = string.format("%02d", index)      
       else
-        patternNames[trackidx][index] = fitStr( str, cellw ) --str:sub(1,nChars)
+        patternNames[trackidx][index] = fitStr( str, cellw )
       end
        
       idx[trackidx] = idx[trackidx] + 1
@@ -1209,7 +1231,6 @@ function seq:populateSequencer()
       patterns[trackIdx][q] = -1
     end
   end
-  
   self.patterns     = patterns
   self.highlight    = highlight
 end
@@ -1261,6 +1282,7 @@ function seq:updateGUI()
 
   local xOrigin       = 0
   local yOrigin       = 0
+   
   gfx.setfont(1, colors.patternFont, colors.patternFontSize)
   
   local xStart = 0
@@ -1268,7 +1290,7 @@ function seq:updateGUI()
   if ( xEnd > nTracks-1 ) then
     xEnd = nTracks-1
   end
-  
+
   -- Draw headers
   local mm = .5*gfx.measurestr("M")
   local ms = .5*gfx.measurestr("S")  
@@ -1387,18 +1409,20 @@ function seq:updateGUI()
   end
   
   -- Cursor
-  gfx.set( table.unpack( colors.linecolor3 ) )
-  gfx.rect( xOrigin + fw * ( 1 + xrel ) + 1, xOrigin + ( 2 + yrel ) * fh, fw - 1, fh )
-  local curElement = patterns[self.xpos][self.ypos]
-  if ( curElement and curElement > 0 ) then
-    if ( self.renaming == 1 ) then
-      gfx.set( table.unpack( colors.changed ) )
-    else
-      gfx.set( table.unpack( colors.textcolor ) )          
+  if ( not isempty(patterns) ) then
+    gfx.set( table.unpack( colors.linecolor3 ) )
+    gfx.rect( xOrigin + fw * ( 1 + xrel ) + 1, xOrigin + ( 2 + yrel ) * fh, fw - 1, fh )
+    local curElement = patterns[self.xpos][self.ypos]
+    if ( curElement and curElement > 0 ) then
+      if ( self.renaming == 1 ) then
+        gfx.set( table.unpack( colors.changed ) )
+      else
+        gfx.set( table.unpack( colors.textcolor ) )          
+      end
+      gfx.x = xOrigin + fw * ( 1 + xrel ) + 3
+      gfx.y = xOrigin + ( 2 + yrel ) * fh
+      gfx.printf("%s", patternNames[self.xpos][curElement])
     end
-    gfx.x = xOrigin + fw * ( 1 + xrel ) + 3
-    gfx.y = xOrigin + ( 2 + yrel ) * fh
-    gfx.printf("%s", patternNames[self.xpos][curElement])
   end
   
   gfx.set( table.unpack( colors.selectLight ) )
@@ -1421,24 +1445,27 @@ function seq:updateGUI()
   gfx.rect( xOrigin+fw, yOrigin + 2*fh-1, fw * (xEnd-xStart+1), 1 )
    
   -- Pattern names
-  local X = gfx.w - self.cfg.nameSize
-  local boxsize = self.cfg.boxsize
-  gfx.x = X 
-  gfx.y = fh
-  gfx.printf( "Track patterns/items" )
-  local chars = seq.chars
-  for i,v in pairs( self.patternNames[self.xpos] ) do
-    local Y = (2+i) * fh
-    gfx.line(X, Y, X+boxsize, Y+boxsize)
-    gfx.line(X+boxsize, Y, X, Y+boxsize)
-    gfx.line(X, Y, X+boxsize, Y)
-    gfx.line(X, Y, X, Y+boxsize)
-    gfx.line(X+boxsize, Y, X, Y+boxsize)
-    gfx.line(X+boxsize, Y, X+boxsize, Y+boxsize)
-    gfx.line(X, Y+boxsize, X+boxsize, Y+boxsize)
-    gfx.x = X+14
-    gfx.y = Y-1
-    gfx.printf( "%s. %s", chars:sub(i,i), v )
+  if ( not isempty(patterns) ) then
+    local X = gfx.w - self.cfg.nameSize
+    local boxsize = self.cfg.boxsize
+    gfx.x = X 
+    gfx.y = fh
+    gfx.printf( "Track patterns/items" )
+    local chars = seq.chars
+    local patternNames = self.patternNames
+    for i,v in pairs( patternNames[self.xpos] ) do
+      local Y = (2+i) * fh
+      gfx.line(X, Y, X+boxsize, Y+boxsize)
+      gfx.line(X+boxsize, Y, X, Y+boxsize)
+      gfx.line(X, Y, X+boxsize, Y)
+      gfx.line(X, Y, X, Y+boxsize)
+      gfx.line(X+boxsize, Y, X, Y+boxsize)
+      gfx.line(X+boxsize, Y, X+boxsize, Y+boxsize)
+      gfx.line(X, Y+boxsize, X+boxsize, Y+boxsize)
+      gfx.x = X+14
+      gfx.y = Y-1
+      gfx.printf( "%s. %s", chars:sub(i,i), v )
+    end
   end
   
   ------------------------------
@@ -2290,8 +2317,10 @@ function seq:processMouseActions()
       if ( i > 0 ) then
         local pNames = self.patternNames[self.xpos]
         -- Which pattern are we trying to delete?
-        if i <= #pNames then
-          self.hoverGUID = self.idxToGUID[self.xpos][i]
+        if pNames then
+          if i <= #pNames then
+            self.hoverGUID = self.idxToGUID[self.xpos][i]
+          end
         end
       end
     end
