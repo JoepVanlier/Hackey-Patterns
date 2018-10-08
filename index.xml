@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="b4e7b7eb738c0bdd9920bfc8f0e4d6029b84c032">
+<index version="1" name="Hackey Sequencer" commit="d190898a4437c3ed2136ce0a8a191ad40d573f87">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -101,6 +101,11 @@
 + Added command for Open HT (enter is default).
 + Added insert / remove / clear row (CTRL+Backspace/Insert/Delete)]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/b4e7b7eb738c0bdd9920bfc8f0e4d6029b84c032/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.22" author=": Joep Vanlier" time="2018-10-08T23:08:17Z">
+        <changelog><![CDATA[+ Added some checking for empty tables
++ Preserve ordering]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/d190898a4437c3ed2136ce0a8a191ad40d573f87/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
