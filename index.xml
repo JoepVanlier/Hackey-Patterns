@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="d190898a4437c3ed2136ce0a8a191ad40d573f87">
+<index version="1" name="Hackey Sequencer" commit="dfeb18a57e938726f00c897d8b3ce56567ad4174">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -106,6 +106,11 @@
         <changelog><![CDATA[+ Added some checking for empty tables
 + Preserve ordering]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/d190898a4437c3ed2136ce0a8a191ad40d573f87/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.23" author=": Joep Vanlier" time="2018-10-09T19:51:39Z">
+        <changelog><![CDATA[+ Added option to follow track column.
++ Added option to follow location.]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/dfeb18a57e938726f00c897d8b3ce56567ad4174/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
