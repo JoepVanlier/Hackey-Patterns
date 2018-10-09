@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.22
+@version 0.23
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,9 @@
 
 --[[
  * Changelog:
+ * v0.23 (2018-10-09)
+   + Added option to follow track column.
+   + Added option to follow location.
  * v0.22 (2018-10-08)
    + Added some checking for empty tables
    + Preserve ordering
@@ -90,7 +93,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.22"
+scriptName = "Hackey Patterns v0.23"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -119,6 +122,8 @@ seq.cfg.page          = 4
 seq.cfg.automation    = 1
 seq.cfg.boxsize       = 8
 seq.cfg.largeScroll   = 4
+seq.cfg.followRow     = 1
+seq.cfg.followTrackSelection = 1
   
 seq.advance       = 1
 
@@ -2541,6 +2546,35 @@ local function updateLoop()
       end      
     end
   
+    if ( seq.cfg.followRow == 1 ) then
+      if ( seq.ypos ~= seq.lasty ) then
+        local rps = reaper.TimeMap2_QNToTime(0, 1) * seq.cfg.zoom
+        reaper.SetEditCurPos2(0, seq.ypos * rps, false, false)
+      end
+    end
+  
+    if ( seq.cfg.followTrackSelection == 1 ) then
+      if ( seq.xpos ~= seq.lastx ) then
+        reaper.PreventUIRefresh(1)
+        for i=0,reaper.CountTracks()-1 do
+          reaper.SetTrackSelected(reaper.GetTrack(0,i), false)
+        end
+        reaper.SetTrackSelected(reaper.GetTrack(0,seq.xpos), true)
+        
+        for i=0,reaper.CountTracks()-1 do
+          reaper.CSurf_OnArrow(0, false)
+        end
+        for i=1,seq.xpos do
+          reaper.CSurf_OnArrow(1, false)
+        end
+        reaper.PreventUIRefresh(-1)
+        reaper.UpdateArrange()
+      end
+    end
+
+    seq.lastx = seq.xpos
+    seq.lasty = seq.ypos
+    
     reaper.defer(updateLoop)
   else
     seq:terminate()
