@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.23
+@version 0.24
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,12 @@
 
 --[[
  * Changelog:
+ * v0.24 (2018-10-10)
+   + Allow visualization of mute status.
+   + Improved renoise color scheme.
+   + Added zoom (+/-)
+   + Added panic (F12)
+   + Added theme switching (F11)
  * v0.23 (2018-10-09)
    + Added option to follow track column.
    + Added option to follow location.
@@ -93,42 +99,44 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.23"
+scriptName = "Hackey Patterns v0.24"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
 
-seq             = {}
-seq.fov         = {}
-seq.fov.scrollx = 0
-seq.fov.scrolly = 0
-seq.fov.width   = 6
-seq.fov.height  = 6
-seq.xpos        = 0
-seq.ypos        = 0
-seq.res         = 16
-seq.patterns    = {}
-seq.renaming    = 0
+seq                 = {}
+seq.fov             = {}
+seq.fov.scrollx     = 0
+seq.fov.scrolly     = 0
+seq.fov.width       = 6
+seq.fov.height      = 6
+seq.fov.scrollpat   = 0
+seq.xpos            = 0
+seq.ypos            = 0
+seq.res             = 16
+seq.patterns        = {}
+seq.renaming        = 0
 
-seq.lastLeft = 1
+seq.lastLeft    = 1
 seq.lastLeftTime = 0
 
 seq.posList = {}
 
 seq.cfg = {}
 seq.cfg.nChars        = 9
-seq.cfg.nameSize      = 180
+seq.cfg.nameSize      = 160
 seq.cfg.page          = 4
 seq.cfg.automation    = 1
 seq.cfg.boxsize       = 8
 seq.cfg.largeScroll   = 4
 seq.cfg.followRow     = 1
+seq.cfg.patternLines  = 30
 seq.cfg.followTrackSelection = 1
+seq.cfg.theme         = "renoise"
   
 seq.advance       = 1
-
 seq.cfg.zoom      = 1
-seq.cfg.eps       = 0.000001
+seq.eps           = 0.000001
 
 seq.cp = {}
 seq.cp.lastShiftCoord = nil
@@ -194,16 +202,10 @@ function seq:loadKeys( keySet )
     keys.cutBlock       = { 1,    0,  0,    24 }            -- CTRL + X
     keys.pasteBlock     = { 1,    0,  0,    22 }            -- CTRL + V
     keys.copyBlock      = { 1,    0,  0,    3 }             -- CTRL + C
-    keys.shiftItemUp    = { 0,    0,  1,    43 }            -- SHIFT + Num pad +
-    keys.shiftItemDown  = { 0,    0,  1,    45 }            -- SHIFT + Num pad -
     keys.help           = { 0,    0,  0,    26161 }         -- F1
-    keys.outchandown    = { 0,    0,  0,    26162 }         -- F2
-    keys.outchanup      = { 0,    0,  0,    26163 }         -- F3
     keys.advancedown    = { 0,    0,  0,    26164 }         -- F4
     keys.advanceup      = { 0,    0,  0,    26165 }         -- F5
-    keys.stop2          = { 0,    0,  0,    26168 }         -- F8
-    keys.harmony        = { 0,    0,  0,    26169 }         -- F9
-    keys.options        = { 0,    0,  0,    6697265 }       -- F11    
+    keys.theme          = { 0,    0,  0,    6697265 }       -- F11   
     keys.panic          = { 0,    0,  0,    6697266 }       -- F12
     keys.setloop        = { 1,    0,  0,    12 }            -- CTRL + L
     keys.setloopstart   = { 1,    0,  0,    17 }            -- CTRL + Q
@@ -243,6 +245,8 @@ function seq:loadKeys( keySet )
     keys.off2           = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned    
     keys.renoiseplay    = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
 
+    keys.zoomin         = { 0,    0,  0,    43 }            -- +
+    keys.zoomout        = { 0,    0,  0,    45 }            -- -
     
     keys.shiftpgdn      = { 0,    0,  1,    1885824110 }    -- Shift + PgDn
     keys.shiftpgup      = { 0,    0,  1,    1885828464 }    -- Shift + PgUp
@@ -267,260 +271,19 @@ function seq:loadKeys( keySet )
       { 'SHIFT + Alt + Up/Down', '[Res]olution Up/Down' },
       { 'SHIFT + Alt + Enter', '[Res]olution Commit' },  
       { 'F4/F5', '[Adv]ance De/Increase' },
-      { 'F2/F3', 'MIDI [out] down/up' },
-      { 'F8/F11/F12', 'Stop / Options / Panic' },
+      { 'F11/F12', 'Switch Theme / Panic' },
       { 'CTRL + Left/Right', 'Switch MIDI item/track' },   
       { 'CTRL + Shift + Left/Right', 'Switch Track' },         
       { 'CTRL + D', 'Duplicate pattern' },
       { 'CTRL + N', 'Rename pattern' },
       { 'CTRL + R', 'Play notes' },
+      { '+/-', 'Zoom in/out' },
       { 'CTRL + +/-', 'Advanced col options' },
-      { '', '' },
-      { 'Harmony helper', '' },      
-      { 'F9', 'Toggle harmonizer' },
-      { 'CTRL + Click', 'Insert chord' },
-      { 'Alt', 'Invert first note' },
-      { 'Shift', 'Invert second note' },
-      { 'CTRL + Shift + Alt + +/-', 'Shift root note' },
     }
-        
-  elseif keyset == "buzz" then
-    --                    CTRL    ALT SHIFT Keycode
-    keys.left           = { 0,    0,  0,    1818584692 }    -- <-
-    keys.right          = { 0,    0,  0,    1919379572 }    -- ->
-    keys.up             = { 0,    0,  0,    30064 }         -- /\
-    keys.down           = { 0,    0,  0,    1685026670 }    -- \/
-    keys.off            = { 0,    0,  0,    96 }            -- ` (should be 1 but whatever)
-    keys.delete         = { 0,    0,  0,    6579564 }       -- Del
-    keys.delete2        = { 0,    0,  0,    46 }            -- .
-    keys.home           = { 0,    0,  0,    1752132965 }    -- Home
-    keys.End            = { 0,    0,  0,    6647396 }       -- End
-    keys.enter          = { 0,    0,  0,    13 }            -- Enter        
-    keys.toggle         = { 0,    0,  0,    26165 }         -- f5 = play/pause
-    keys.playfrom       = { 0,    0,  0,    26166 }         -- f6 = play here 
-    keys.stop2          = { 0,    0,  0,    26168 }         -- f8 = Stop
-    keys.harmony        = { 0,    0,  0,    26169 }         -- f9 = Harmony helper
-    keys.options        = { 0,    0,  0,    6697265 }       -- f11 = Options
-    keys.panic          = { 0,    0,  0,    6697266 }       -- f12 = MIDI Panic!
-    keys.insert         = { 0,    0,  0,    6909555 }       -- Insert
-    keys.remove         = { 0,    0,  0,    8 }             -- Backspace
-    keys.pgup           = { 0,    0,  0,    1885828464 }    -- Page up
-    keys.pgdown         = { 0,    0,  0,    1885824110 }    -- Page down
-    keys.undo           = { 1,    0,  0,    26 }            -- CTRL + Z
-    keys.redo           = { 1,    0,  1,    26 }            -- CTRL + SHIFT + Z
-    keys.beginBlock     = { 1,    0,  0,    2 }             -- CTRL + B
-    keys.endBlock       = { 1,    0,  0,    5 }             -- CTRL + E
-    keys.cutBlock       = { 1,    0,  0,    24 }            -- CTRL + X
-    keys.pasteBlock     = { 1,    0,  0,    22 }            -- CTRL + V
-    keys.copyBlock      = { 1,    0,  0,    3 }             -- CTRL + C
-    keys.shiftItemUp    = { 0,    0,  1,    43 }            -- SHIFT + Num pad+
-    keys.shiftItemDown  = { 0,    0,  1,    45 }            -- SHIFT + Num pad-
-    keys.help           = { 0,    0,  0,    26161 }         -- F1
-    keys.outchanup      = { 1,    0,  0,    30064 }         -- CTRL + UP   (Buzz = next instrument)
-    keys.outchandown    = { 1,    0,  0,    1685026670 }    -- CTRL + DOWN (Buzz = prev instrument)
-    keys.advancedown    = { 1,    0,  0,    26161 }         -- CTRL + F1 (in Buzz CTRL + -1 = sets step to 1, but that didn't work here)
-    keys.advanceup      = { 1,    0,  0,    26162 }         -- CTRL + F2 (in Buzz CTRL + 2 = sets step to 2, but that didn't work here)
-    keys.setloop        = { 1,    0,  0,    12 }            -- CTRL + L (no equiv, would be done in F4 seq view)
-    keys.setloopstart   = { 1,    0,  0,    17 }            -- CTRL + Q (ditto)
-    keys.setloopend     = { 1,    0,  0,    23 }            -- CTRL + W (ditto)
-    keys.interpolate    = { 1,    0,  0,    9 }             -- CTRL + I
-    keys.shiftleft      = { 0,    0,  1,    1818584692 }    -- Shift + <-
-    keys.shiftright     = { 0,    0,  1,    1919379572 }    -- Shift + ->
-    keys.shiftup        = { 0,    0,  1,    30064 }         -- Shift + /\
-    keys.shiftdown      = { 0,    0,  1,    1685026670 }    -- Shift + \/
-    keys.deleteBlock    = { 0,    0,  1,    6579564 }       -- Shift + Del
-    keys.resolutionUp   = { 0,    1,  1,    30064 }         -- SHIFT + Alt + Up    (no equiv, would be set in pattern properties)
-    keys.resolutionDown = { 0,    1,  1,    1685026670 }    -- SHIFT + Alt + Down  (ditto)
-    keys.commit         = { 0,    1,  1,    13 }            -- SHIFT + Alt + Enter (ditto)
-    keys.nextMIDI       = { 0,    0,  0,    43 }            -- +
-    keys.prevMIDI       = { 0,    0,  0,    45 }            -- -
-    keys.duplicate      = { 1,    0,  1,    13 }            -- CTRL + Shift + Return = create copy
-    keys.rename         = { 1,    0,  0,    8 }             -- CTRL + Backspace = pattern properties (where name is set)
-    keys.escape         = { 0,    0,  0,    27 }            -- Escape
-    keys.toggleRec      = { 0,    0,  0,    26167 }         -- f7 = record ...I wanted ALT + N = Play _N_otes, but it didn't work ¯\_(ツ)_/¯
-    keys.showMore       = { 1,    0,  0,    11 }            -- CTRL + +
-    keys.showLess       = { 1,    0,  0,    13 }            -- CTRL + -
-    keys.tab            = { 0,    0,  0,    9 }             -- Tab
-    keys.shifttab       = { 0,    0,  1,    9 }             -- SHIFT + Tab
-    keys.follow         = { 1,    0,  0,    6 }             -- CTRL + F    
-    keys.deleteRow      = { 1,    0,  0,    6579564 }       -- Ctrl + Del  
-    keys.nextTrack      = { 1,    0,  1,    1919379572.0 }  -- CTRL + Shift + ->
-    keys.prevTrack      = { 1,    0,  1,    1818584692.0 }  -- CTRL + Shift + <-
-    keys.hackeytrackey  = { 0,    0,  0,    13 }            -- Enter
-    
-    keys.insertRow      = { 1,    1,  0,    6909555 }       -- Insert row CTRL+Alt+Ins
-    keys.removeRow      = { 1,    1,  0,    8 }             -- Remove Row CTRL+Alt+Backspace  
-    
-    keys.m0             = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.m25            = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.m50            = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.m75            = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.off2           = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    keys.renoiseplay    = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
-    
-    keys.closeTracker   = { 0,    0,  0,    500000000000000000000000 }      -- Unassigned
-    keys.addColAll      = { 1,    0,  1,    1 }             -- CTRL + Shift + A
-    keys.shiftpgdn      = { 0,    0,  1,    1885824110 }    -- Shift + PgDn
-    keys.shiftpgup      = { 0,    0,  1,    1885828464 }    -- Shift + PgUp
-    keys.shifthome      = { 0,    0,  1,    1752132965 }    -- Shift + Home
-    keys.shiftend       = { 0,    0,  1,    6647396 }       -- Shift + End
-    
-    help = {
-      { 'Shift + Note', 'Advance column after entry' },
-      { '`', 'Note OFF' },
-      { 'Insert/Backspace', 'Insert/Remove line' },   
-      { 'CTRL + Alt + Insert/Backspace', 'Insert Row/Remove Row' },    
-      { 'Del/.', 'Delete' }, 
-      { 'F5/F6', 'Play/Play from here' },
-      { 'F8/F11/F12', 'Stop / Options / Panic' },
-      { 'CTRL + L', 'Loop pattern' },
-      { 'CTRL + Q/W', 'Loop start/end' },
-      { 'Shift + +/-', 'Transpose selection' },
-      { 'CTRL + B/E', 'Selection Begin/End' },
-      { 'SHIFT + Arrow Keys', 'Block selection' },
-      { 'CTRL + C/X/V', 'Copy / Cut / Paste' },
-      { 'CTRL + I', 'Interpolate' },
-      { 'Shift + Del', 'Delete block' },
-      { 'CTRL + (SHIFT) + Z', 'Undo / Redo' }, 
-      { 'SHIFT + Alt + Up/Down', '[Res]olution Up/Down' },
-      { 'SHIFT + Alt + Return', '[Res]olution Commit' },  
-      { 'CTRL + F1/F2', '[Adv]ance De/Increase' },
-      { 'CTRL + Up/Down', 'MIDI [out] Up/Down' },  
-      { '-/+', 'Switch MIDI item' },
-      { 'CTRL + Shift + Left/Right', 'Switch track' },
-      { 'CTRL + Shift + Return', 'Duplicate pattern' },
-      { 'CTRL + Backspace', 'Rename pattern' },
-      { 'F7', 'Toggle note play' },
-      { 'CTRL + +/-', 'Advanced col options' },
-      { '', '' },
-      { 'Harmony helper', '' },      
-      { 'F9', 'Toggle harmonizer' },
-      { 'CTRL + Click', 'Insert chord' },
-      { 'Alt', 'Invert first note' },
-      { 'Shift', 'Invert second note' },   
-      { 'CTRL + Shift + Alt + +/-', 'Shift root note' },
-    }
-  elseif keyset == "renoise" then
-    --                    CTRL    ALT SHIFT Keycode
-    keys.left           = { 0,    0,  0,    1818584692 }    -- <-
-    keys.right          = { 0,    0,  0,    1919379572 }    -- ->
-    keys.up             = { 0,    0,  0,    30064 }         -- /\
-    keys.down           = { 0,    0,  0,    1685026670 }    -- \/
-    keys.off            = { 0,    0,  0,    92 }            -- Backslash (\) (temporary)
-    keys.delete         = { 0,    0,  0,    500000000000000000000000 }        -- Not assigned
-    keys.delete2        = { 0,    0,  0,    6579564 }       -- Del
-    keys.home           = { 0,    0,  0,    1752132965 }    -- Home
-    keys.End            = { 0,    0,  0,    6647396 }       -- End
-    keys.enter          = { 0,    0,  0,    13 }            -- Enter        
-    keys.renoiseplay    = { 0,    0,  0,    32 }            -- Play/pause (space)
-    keys.playfrom       = { 0,    0,  1,    32 }            -- Shift + space
-    keys.stop2          = { 0,    0,  0,    500000000000000000000000 }  -- Not assigned
-    keys.harmony        = { 1,    0,  0,    8  }             -- ctrl+h harmony helper
-    keys.options        = { 1,    0,  0,    15 }            -- ctrl+o options
-    keys.panic          = { 0,    0,  0,    27 }            -- Escape = MIDI Panic!
-    keys.insert         = { 0,    0,  0,    6909555 }       -- Insert
-    keys.remove         = { 0,    0,  0,    8 }             -- Backspace
-    keys.pgup           = { 0,    0,  0,    1885828464 }    -- Page up
-    keys.pgdown         = { 0,    0,  0,    1885824110 }    -- Page down
-    keys.m0             = { 0,    0,  0,    26169.0 }       -- F9
-    keys.m25            = { 0,    0,  0,    6697264.0 }     -- F10
-    keys.m50            = { 0,    0,  0,    6697265.0 }     -- F11
-    keys.m75            = { 0,    0,  0,    6697266.0 }     -- F12
-    keys.undo           = { 1,    0,  0,    26 }            -- CTRL + Z
-    keys.redo           = { 1,    0,  1,    26 }            -- CTRL + SHIFT + Z
-    keys.beginBlock     = { 1,    0,  0,    2 }             -- CTRL + B
-    keys.endBlock       = { 1,    0,  0,    5 }             -- CTRL + E
-    keys.cutBlock       = { 1,    0,  0,    24 }            -- CTRL + X
-    keys.pasteBlock     = { 1,    0,  0,    22 }            -- CTRL + V
-    keys.copyBlock      = { 1,    0,  0,    3 }             -- CTRL + C
-    keys.shiftItemUp    = { 0,    0,  1,    43 }            -- SHIFT + Num pad+
-    keys.shiftItemDown  = { 0,    0,  1,    45 }            -- SHIFT + Num pad-
-    keys.hackeytrackey  = { 0,    0,  0,    13 }            -- Enter
-    keys.help           = { 0,    0,  0,    26161 }         -- F1
-    keys.outchanup      = { 0,    0,  0,    43 }            -- +
-    keys.outchandown    = { 0,    0,  0,    45 }            -- -
-    keys.advancedown    = { 1,    0,  0,    13 }            -- CTRL + -
-    keys.advanceup      = { 1,    0,  0,    11 }            -- CTRL + +
-    keys.setloop        = { 0,    0,  1,    13 }            -- Enter
-    keys.setloopstart   = { 1,    0,  0,    17 }            -- CTRL + Q (ditto)
-    keys.setloopend     = { 1,    0,  0,    23 }            -- CTRL + W (ditto)
-    keys.interpolate    = { 1,    0,  0,    9 }             -- CTRL + I
-    keys.shiftleft      = { 0,    0,  1,    1818584692 }    -- Shift + <-
-    keys.shiftright     = { 0,    0,  1,    1919379572 }    -- Shift + ->
-    keys.shiftup        = { 0,    0,  1,    30064 }         -- Shift + /\
-    keys.shiftdown      = { 0,    0,  1,    1685026670 }    -- Shift + \/
-    keys.deleteBlock    = { 0,    0,  1,    6579564 }       -- Shift + Del
-    keys.resolutionUp   = { 0,    1,  1,    30064 }         -- SHIFT + Alt + Up    (no equiv, would be set in pattern properties)
-    keys.resolutionDown = { 0,    1,  1,    1685026670 }    -- SHIFT + Alt + Down  (ditto)
-    keys.commit         = { 0,    1,  1,    13 }            -- SHIFT + Alt + Enter (ditto)
-    keys.nextMIDI       = { 1,    0,  0,    1685026670.0 }  -- CTRL + /\
-    keys.prevMIDI       = { 1,    0,  0,    30064.0 }       -- CTRL + \/
-    keys.duplicate      = { 1,    0,  1,    13 }            -- CTRL + Shift + Return = create copy
-    keys.rename         = { 1,    0,  1,    14 }            -- CTRL + SHIFT + N
-    keys.escape         = { 0,    0,  0,    27 }            -- Escape
-    keys.toggleRec      = { 1,    0,  0,    18 }            -- CTRL + N
-    keys.showMore       = { 1,    1,  0,    267 }           -- CTRL + Alt + +
-    keys.showLess       = { 1,    1,  0,    269 }           -- CTRL + Alt + -
-    keys.tab            = { 0,    0,  0,    9 }             -- Tab
-    keys.shifttab       = { 0,    0,  1,    9 }             -- SHIFT + Tab
-    keys.follow         = { 1,    0,  0,    6 }             -- CTRL + F
-    
-    keys.off2           = { 0,    0,  0,    97 }            -- A      
-    keys.deleteRow      = { 1,    0,  0,    6579564 }       -- Ctrl + Del
-    
-    keys.toggle         = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned    
-    
-    keys.shiftpgdn      = { 0,    0,  1,    1885824110 }    -- Shift + PgDn
-    keys.shiftpgup      = { 0,    0,  1,    1885828464 }    -- Shift + PgUp
-    keys.shifthome      = { 0,    0,  1,    1752132965 }    -- Shift + Home
-    keys.shiftend       = { 0,    0,  1,    6647396 }       -- Shift + End
-    
-    keys.closeTracker   = { 0,    0,  0,    26168 }         -- F8
-    
-    keys.insertRow      = { 1,    0,  0,    6909555 }       -- Insert row CTRL+Ins
-    keys.removeRow      = { 1,    0,  0,    8 }             -- Remove Row CTRL+Backspace
-    
-    keys.nextTrack      = { 1,    0,  1,    1919379572.0 }  -- CTRL + Shift + ->
-    keys.prevTrack      = { 1,    0,  1,    1818584692.0 }  -- CTRL + Shift + <-
-    
-    help = {
-      { 'Shift + Note', 'Advance column after entry' },
-      { '\\ or A', 'Note OFF' },
-      { 'Insert/Backspace', 'Insert/Remove line' },
-      { 'CTRL + Insert/Backspace', 'Insert Row/Remove Row' },     
-      { 'Del/Ctrl+Del', 'Delete/Delete Row' },     
-      { 'Space/Shift+Space', 'Play / Play From' },
-      { 'Ctrl + O / Escape', 'Options / Stop all notes' },
-      { 'Shift + Enter', 'Loop pattern' },
-      { 'CTRL + Q/W', 'Loop start/end' },
-      { 'Shift + +/-', 'Transpose selection' },
-      { 'CTRL + B/E', 'Selection Begin/End' },
-      { 'SHIFT + Arrow Keys', 'Block selection' },
-      { 'CTRL + C/X/V', 'Copy / Cut / Paste' },
-      { 'CTRL + I', 'Interpolate' },
-      { 'Shift + Del', 'Delete block' },
-      { 'CTRL + (SHIFT) + Z', 'Undo / Redo' }, 
-      { 'SHIFT + Alt + Up/Down', '[Res]olution Up/Down' },
-      { 'SHIFT + Alt + Return', '[Res]olution Commit' },  
-      { 'CTRL + -/+ | SHIFT + -/=', '[Adv]ance De/Increase' },
-      { '+/-', 'MIDI [out] Up/Down' },  
-      { 'CTRL + Up/Down', 'Switch MIDI item' },
-      { 'CTRL + Shift + Return', 'Duplicate pattern' },
-      { 'CTRL + SHIFT + N', 'Rename pattern' },
-      { 'CTRL + R', 'Toggle note play' },
-      { 'F9/F10/F11/F12', 'Goto 0, 25, 50 and 75%%' },
-      { 'F8', 'Close tracker' },
-      { '---', '' },      
-      { 'CTRL + H', 'Toggle harmonizer' },
-      { 'CTRL + Click', 'Insert chord' },
-      { 'Alt', 'Invert first note' },
-      { 'Shift', 'Invert second note' },   
-      { 'CTRL + Shift + Alt + +/-', 'Shift root note' },
-    }    
   end
 end
 
-seq.colorschemes = {"default", "buzz", "it", "hacker", "renoise", "renoiseB"}
+seq.colorschemes = {"buzz", "it", "hacker", "renoise"}
 function seq:loadColors(colorScheme)
   -- If you come up with a cool alternative color scheme, let me know
   self.colors = {}
@@ -529,41 +292,21 @@ function seq:loadColors(colorScheme)
   self.colors.patternFont = nil
   self.colors.patternFontSize = nil
   local colorScheme = colorScheme or seq.cfg.colorscheme
-  if colorScheme == "default" then
-  -- default
-    self.colors.helpcolor    = {.8, .8, .9, 1}
-    self.colors.helpcolor2   = {.7, .7, .9, 1}
-    self.colors.selectcolor  = {.6, 0, .6, 1}
-    self.colors.textcolor    = {.7, .8, .8, 1}
-    self.colors.headercolor  = {.5, .5, .8, 1}
-    self.colors.inactive     = {.2, .2, .3, 1}    
-    self.colors.linecolor    = {.1, .0, .4, .4}
-    self.colors.linecolor2   = {.3, .0, .6, .4}
-    self.colors.linecolor3   = {.4, .1, 1, 1}
-    self.colors.linecolor4   = {.2, .0, 1, .5}
-    self.colors.linecolor5   = {.3, .0, .6, .4}
-    self.colors.loopcolor    = {.2, .3, .8, .5}
-    self.colors.copypaste    = {5.0, .7, 0.1, .2}
-    self.colors.scrollbar1   = {.2, .1, .6, 1.0}
-    self.colors.scrollbar2   = {.1, .0, .3, 1.0}
-    self.colors.changed      = {1.0, 0.1, 0.1, 1.0} 
-    self.colors.changed2     = {0.0, 0.1, 1.0, .5} -- Only listening    
-    self.colors.windowbackground = {0, 0, 0, 1}
-    self.crtStrength         = 2
-  elseif colorScheme == "hacker" then
+  if colorScheme == "hacker" then
     self.colors.helpcolor    = {0, .4, .2, 1}
     self.colors.helpcolor2   = {0, .7, .3, 1}
-    self.colors.selectcolor  = {0, .3, 0, 1}
+    self.colors.selectcolor  = {0.1, 1.0, 0.4, 1}
+    self.colors.selecttext   = {0, 0, 0, 1} -- the cursor
     self.colors.textcolor    = {0, .8, .4, 1}
     self.colors.textcolorbar = {0.05, 1.0, .7, 1}    
     self.colors.headercolor  = {0, .9, .5, 1}
-    self.colors.inactive     = {0, .3, .1, 1}    
+    self.colors.inactive     = {0, .08, .03, 1}    
     self.colors.linecolor    = {0, .1, 0, .4}
     self.colors.linecolor2   = {0, .3, .2, .4}
     self.colors.linecolor3   = {0, .2, 0, 1}
-    self.colors.linecolor4   = {0, .1, .1, .5}
-    self.colors.linecolor5   = {0, .6, .5, .4}
-    self.colors.loopcolor    = {0, .3, 0, .5}
+    self.colors.linecolor4   = {.2, .7, .3, .5}
+    self.colors.linecolor5   = {0, .5, .4, .3}
+    self.colors.loopcolor    = {.2, .7, .2, .5}
     self.colors.copypaste    = {0, .7, .5, .2}
     self.colors.scrollbar1   = {0, .1, 0, 1.0}
     self.colors.scrollbar2   = {0, .0, 0, 1.0}
@@ -599,6 +342,7 @@ function seq:loadColors(colorScheme)
     self.colors.helpcolor        = {0, 0, 0, 1} -- the functions
     self.colors.helpcolor2       = {1/256*124, 1/256*88, 1/256*68, 1} -- the keys
     self.colors.selectcolor      = {1, 1, 1, 1} -- the cursor
+    self.colors.selecttext       = {0, 0, 0, 1} -- the cursor
     self.colors.textcolor        = {1, 1, 1, 1} --{1/256*60, 1/256*105, 1/256*59, 1} -- main pattern data (rows should all be darker & this should be green)
     self.colors.headercolor      = {0, 0, 0, 1} -- column headers, statusbar etc
     self.colors.inactive         = {.2, .2, .2, 1} -- column headers, statusbar etc    
@@ -616,7 +360,6 @@ function seq:loadColors(colorScheme)
     self.colors.windowbackground = {1/256*180, 1/256*148, 1/256*120, 1}
     self.crtStrength             = .5
   elseif colorScheme == "renoise" then
-    self.colors.ellipsis         = 1
     self.colors.harmonycolor     = {177/255, 171/255, 116/255, 1.0}
     self.colors.harmonyselect    = {183/255, 255/255, 191/255, 1.0}
     self.colors.helpcolor        = {243/255, 171/255, 116/255, 1.0} -- the functions
@@ -626,13 +369,11 @@ function seq:loadColors(colorScheme)
     self.colors.textcolor        = {148/256, 148/256, 148/256, 1} --{1/256*60, 1/256*105, 1/256*59, 1} -- main pattern data (rows should all be darker & this should be green)
     self.colors.textcolorbar     = {1, 1, 1, 1}
     self.colors.headercolor      = {215/256, 215/256, 215/256, 1} -- column headers, statusbar etc
-    self.colors.inactive         = {115/256, 115/256, 115/256, 1} -- column headers, statusbar etc    
+    self.colors.inactive         = {35/256,35/256,35/256,55/256} -- {115/256, 115/256, 115/256, 1} -- column headers, statusbar etc    
     self.colors.linecolor        = {18/256,18/256,18/256, 0.6} -- normal row
     self.colors.linecolor2       = {1/256*55, 1/256*55, 1/256*55, 0.6} -- beats (must not have 100% alpha as it's drawn over the cursor(!))
     self.colors.linecolor3       = {1/256*180, 1/256*148, 1/256*120, 1} -- scroll indicating trangle thingy
-    self.colors.linecolor4       = {1/256*204, 1/256*204, 1/256*68, 1} -- Reaper edit cursor
     self.colors.linecolor5       = {41/256, 41/256, 41/256, 1.0} -- Bar start
-    self.colors.loopcolor        = {1/256*204, 1/256*204, 1/256*68, 1} -- lines surrounding loop
     self.colors.copypaste        = {1/256*57, 1/256*57, 1/256*20, 0.66}  -- the selection (should be lighter(not alpha blanded) but is drawn over the data)
     self.colors.scrollbar1       = {98/256, 98/256, 98/256, 1} -- scrollbar handle & outline
     self.colors.scrollbar2       = {19/256, 19/256, 19/256, 1} -- scrollbar background
@@ -640,6 +381,9 @@ function seq:loadColors(colorScheme)
     self.colors.changed2         = {0, .5, 1, .5} -- Only listening
     self.colors.windowbackground = {18/256, 18/256, 18/256, 1}
     self.crtStrength             = 0   
+    
+    self.colors.linecolor4       = {243/255, 171/255, 116/255, 1.0} -- {1/256*204, 1/256*204, 1/256*68, 1} -- Reaper edit cursor
+    self.colors.loopcolor        = {123/255, 149/255, 197/255, 1.0} -- {1/256*204, 1/256*204, 1/256*68, 1} -- lines surrounding loop
     
     self.colors.normal.mod1      = {243/255, 171/255, 116/255, 1.0}
     self.colors.normal.mod2      = self.colors.normal.mod1
@@ -658,65 +402,7 @@ function seq:loadColors(colorScheme)
     self.colors.normal.end1      = {136/255, 80/255, 178/255, 1.0}
     self.colors.normal.end2      = self.colors.normal.end1
     
-    self.colors.bar.mod1         = {255/255, 159/255, 88/255, 1.0}
-    self.colors.bar.mod2         = self.colors.bar.mod1
-    self.colors.bar.mod3         = self.colors.bar.mod1
-    self.colors.bar.mod4         = self.colors.bar.mod1
-    self.colors.bar.modtxt1      = {255/255, 159/255, 88/255, 1.0}
-    self.colors.bar.modtxt2      = self.colors.bar.modtxt1
-    self.colors.bar.modtxt3      = self.colors.bar.modtxt1
-    self.colors.bar.modtxt4      = self.colors.bar.modtxt1
-    self.colors.bar.vel1         = {171/255, 169/255, 77/255, 1.0}
-    self.colors.bar.vel2         = self.colors.bar.vel1
-    self.colors.bar.delay1       = {116/255, 162/255, 255/255, 1.0}
-    self.colors.bar.delay2       = self.colors.bar.delay1    
-    self.colors.bar.fx1          = {146/255, 255/255, 157/255, 1.0}
-    self.colors.bar.fx2          = self.colors.normal.fx1   
-    self.colors.bar.end1         = {136/255, 80/255, 178/255, 1.0}
-    self.colors.bar.end2         = self.colors.bar.end1
-  elseif colorScheme == "renoiseB" then
-    self.colors.ellipsis         = 1
-    self.colors.harmonycolor     = {177/255, 171/255, 116/255, 1.0}
-    self.colors.harmonyselect    = {183/255, 255/255, 191/255, 1.0}
-    self.colors.helpcolor        = {243/255, 171/255, 116/255, 1.0} -- the functions
-    self.colors.helpcolor2       = {178/256, 178/256, 178/256, 1} -- the keys
-    self.colors.selectcolor      = {1, 234/256, 20/256, 1} -- the cursor
-    self.colors.selecttext       = {0, 0, 0, 1} -- the cursor
-    self.colors.textcolor        = {148/256, 148/256, 148/256, 1} --{1/256*60, 1/256*105, 1/256*59, 1} -- main pattern data (rows should all be darker & this should be green)
-    self.colors.textcolorbar     = {1, 1, 1, 1}
-    self.colors.headercolor      = {215/256, 215/256, 215/256, 1} -- column headers, statusbar etc
-    self.colors.inactive         = {115/256, 115/256, 115/256, 1} -- column headers, statusbar etc    
-    self.colors.linecolor        = {18/256,18/256,18/256, 0.6} -- normal row
-    self.colors.linecolor2       = {1/256*55, 1/256*55, 1/256*55, 0.6} -- beats (must not have 100% alpha as it's drawn over the cursor(!))
-    self.colors.linecolor3       = {1/256*180, 1/256*148, 1/256*120, 1} -- scroll indicating trangle thingy
-    self.colors.linecolor4       = {1/256*204, 1/256*204, 1/256*68, 1} -- Reaper edit cursor
-    self.colors.linecolor5       = {41/256, 41/256, 41/256, 1.0} -- Bar start
-    self.colors.loopcolor        = {1/256*204, 1/256*204, 1/256*68, 1} -- lines surrounding loop
-    self.colors.copypaste        = {1/256*57, 1/256*57, 1/256*20, 0.66}  -- the selection (should be lighter(not alpha blanded) but is drawn over the data)
-    self.colors.scrollbar1       = {98/256, 98/256, 98/256, 1} -- scrollbar handle & outline
-    self.colors.scrollbar2       = {19/256, 19/256, 19/256, 1} -- scrollbar background
-    self.colors.changed          = {1, 1, 0, 1}
-    self.colors.changed2         = {0, .5, 1, .5} -- Only listening
-    self.colors.windowbackground = {18/256, 18/256, 18/256, 1}
-    self.crtStrength             = 0   
-    
-    self.colors.normal.mod1      = {243/255, 171/255, 116/255, 1.0}
-    self.colors.normal.mod2      = self.colors.normal.mod1
-    self.colors.normal.mod3      = self.colors.normal.mod1
-    self.colors.normal.mod4      = self.colors.normal.mod1
-    self.colors.normal.modtxt1   = {243/255, 171/255, 116/255, 1.0}
-    self.colors.normal.modtxt2   = self.colors.normal.modtxt1
-    self.colors.normal.modtxt3   = self.colors.normal.modtxt1
-    self.colors.normal.modtxt4   = self.colors.normal.modtxt1
-    self.colors.normal.vel1      = {186/255, 185/255, 108/255, 1.0}
-    self.colors.normal.vel2      = self.colors.normal.vel1
-    self.colors.normal.delay1    = {123/255, 149/255, 197/255, 1.0}
-    self.colors.normal.delay2    = self.colors.normal.delay1
-    self.colors.normal.fx1       = {183/255, 255/255, 191/255, 1.0}
-    self.colors.normal.fx2       = self.colors.normal.fx1
-    self.colors.normal.end1      = {136/255, 80/255, 178/255, 1.0}
-    self.colors.normal.end2      = self.colors.normal.end1
-    
+    self.colors.selectcolor      = {255/255, 159/255, 88/255, 1.0}
     self.colors.bar.mod1         = {255/255, 159/255, 88/255, 1.0}
     self.colors.bar.mod2         = self.colors.bar.mod1
     self.colors.bar.mod3         = self.colors.bar.mod1
@@ -743,6 +429,8 @@ function seq:loadColors(colorScheme)
   self.colors.green               = {.7, 1.0, 0.4, 0.4}
   local mix                       = 0.5
   self.colors.linecolor6          = {self.colors.linecolor5[1]*mix+(1-mix)*(self.colors.windowbackground[1]), self.colors.linecolor5[2]*mix+(1-mix)*(self.colors.windowbackground[1]), self.colors.linecolor5[3]*mix+(1-mix)*(self.colors.windowbackground[2]), self.colors.linecolor5[4]}
+  local mix                       = 0.6
+  self.colors.linecolor7          = {self.colors.linecolor5[1]*mix+(1-mix)*(self.colors.windowbackground[1]), self.colors.linecolor5[2]*mix+(1-mix)*(self.colors.windowbackground[1]), self.colors.linecolor5[3]*mix+(1-mix)*(self.colors.windowbackground[2]), self.colors.linecolor5[4]}
   self.colors.selectLight         = {self.colors.selectcolor[1], self.colors.selectcolor[2], self.colors.selectcolor[3], .2 * self.colors.selectcolor[4]}
   self.colors.patternFont         = "DejaVu Sans"
   self.colors.patternFontSize     = 12
@@ -833,15 +521,86 @@ function isempty(t)
     return true
 end
 
+------------------------------
+-- Scrollbar
+------------------------------
+scrollbar = {}
+function scrollbar.create( w )
+  self = {}
+  self.w = w
+  self.setPos = function ( self, x, y, h )
+    self.x = x
+    self.y = y
+    self.h = h
+    
+    self.ytop = ytop
+    self.yend = yend
+  end
+  self.setExtent = function( self, ytop, yend )
+    self.ytop = ytop
+    self.yend = yend
+  end
+  
+  self.mouseUpdate = function(self, mx, my, left)
+    local loc
+    if ( left == 1 ) then
+      if ( ( mx > self.x ) and ( mx < self.x + self.w ) ) then
+        if ( ( my > self.y ) and ( my < self.y + self.h ) ) then
+          loc = ( my - self.y ) / self.h
+        end
+      end
+      return loc
+    end
+  end
+  
+  self.draw = function(self, colors)
+    local x = self.x
+    local y = self.y
+    local w = self.w
+    local h = self.h
+    local ytop = self.ytop
+    local yend = self.yend
+    
+    gfx.set(table.unpack(colors.scrollbar1))
+    gfx.rect(x, y, w, h)
+    gfx.set(table.unpack(colors.scrollbar2))
+    gfx.rect(x+1, y+1, w-2, h-2)
+    gfx.set(table.unpack(colors.scrollbar1))
+    gfx.rect(x+2, y + ytop*h+2, w-4, (yend-ytop)*h-3)
+  end
+  
+  return self
+end
+
 -- Prep process
 function seq:selectMediaItem(item)
   reaper.SelectAllMediaItems(0, false)
   reaper.SetMediaItemSelected(item, true)
 end
 
+function seq:newName(name)
+  local addi = 1
+  local repeatIt = 1
+  local testName
+  
+  while ( repeatIt == 1 ) do
+    repeatIt = 0
+    for i,v in pairs( self.patternNames[self.xpos] ) do
+      testName = string.format("%s (%d)", name, addi)
+      if ( testName == v ) then
+        addi = addi + 1
+        repeatIt = 1
+      end
+    end
+  end
+  
+  return testName
+end
+
 function seq:uniqueMIDI(track, row)
+  local trackItems = self.trackItems
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
-  local eps = self.cfg.eps
+  local eps = self.eps
 
   --41613  Item: Remove active take from MIDI source data pool (AKA un-pool, un-ghost, make unique)
   reaper.SelectAllMediaItems(0, false)
@@ -852,6 +611,9 @@ function seq:uniqueMIDI(track, row)
       local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
       if ( math.floor( pos / rps + eps ) == row ) then
         reaper.SetMediaItemInfo_Value( v[1], "B_UISEL", 1 )
+        local ret, str = reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", "", false)       
+        --self.patternNames[self.xpos][self.patterns[self.xpos][self.ypos]]
+        reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", seq:newName(str), true)
       end
     end
   end
@@ -865,7 +627,7 @@ function seq:uniqueAutomation(track, row)
 
   -- Select only the automation items of interest.
   local selected
-  local eps = self.cfg.eps
+  local eps = self.eps
   if ( self.cfg.automation == 1 ) then
     for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
       local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
@@ -1141,7 +903,7 @@ function seq:loadConfig(fn, cfg)
 end
 
 function seq:saveConfig(fn, cfg) 
-  tracker:saveConfigFile( fn, cfg )
+  seq:saveConfigFile( fn, cfg )
 end
 
 function seq:saveConfigFile(fn, cfg)
@@ -1161,6 +923,7 @@ end
 function seq:terminate()
   local d, x, y, w, h = gfx.dock(nil,1,1,1,1)
   seq:saveConfigFile("_wpos.cfg", {d=d, x=x, y=y, w=w, h=h})
+  self:saveConfig("seq.cfg", self.cfg)
   gfx.quit()
 end
 
@@ -1193,7 +956,7 @@ function seq:populateSequencer()
   local patterns      = {}
   local highlight     = {}
   local trackToIndex  = self.trackToIndex
-  local eps           = self.cfg.eps
+  local eps           = self.eps
   
   -- Go over all the media items we found that weren't in the pool
   --   trackItems[i] = { mediaItem, track, take, GUID }
@@ -1209,11 +972,15 @@ function seq:populateSequencer()
     local mediaItem = reaper.GetMediaItem(0,i)
     local trackIdx = trackToIndex[reaper.GetMediaItemTrack(mediaItem)]
     local pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
+    local mute = reaper.GetMediaItemInfo_Value(mediaItem, "B_MUTE")
     local len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")    
     local ystart = math.floor(pos/dy + eps)
     local yend = math.ceil((pos+len)/dy - eps)
     for q = ystart+1,yend-1 do
       patterns[trackIdx][q] = -2
+      if ( mute == 1 ) then
+        highlight[trackIdx][q] = -1
+      end
     end
   end
   
@@ -1221,11 +988,15 @@ function seq:populateSequencer()
     local trackGUID = v[4]
     local pos = reaper.GetMediaItemInfo_Value(v[1], "D_POSITION")
     local len = reaper.GetMediaItemInfo_Value(v[1], "D_LENGTH")
+    local mute = reaper.GetMediaItemInfo_Value(v[1], "B_MUTE")
     local ystart = math.floor(pos/dy + eps)
     local yend = math.ceil((pos+len)/dy - eps)
     local q = ystart
     local trackIdx = trackToIndex[v[2]]
     patterns[trackIdx][q] = guidToPatternIdx[trackIdx][trackGUID]
+    if ( mute == 1 ) then
+      highlight[trackIdx][q] = -1
+    end
     if ( self.hoverGUID == trackGUID ) then
       highlight[trackIdx][q] = 1
       for q = ystart+1,yend-1 do
@@ -1277,7 +1048,7 @@ function seq:updateGUI()
   local height        = self.fov.height
   local colors        = self.colors
   local customFont    = colors.customFontDisplace
-  
+ 
   local scrollx       = fov.scrollx
   local scrolly       = fov.scrolly
   
@@ -1296,13 +1067,16 @@ function seq:updateGUI()
     xEnd = nTracks-1
   end
 
+  ---------------------------------
   -- Draw headers
+  ---------------------------------
   local mm = .5*gfx.measurestr("M")
   local ms = .5*gfx.measurestr("S")  
   for ix=xStart,xEnd do
     local xl = xOrigin + fw*(ix+1)
     local cTrack = reaper.GetTrack( 0, ix+scrollx )
-    gfx.x = xl + 4
+    local offs = .5*gfx.measurestr(trackTitles[ix+scrollx])
+    gfx.x = xl + .5*fw - offs
     gfx.y = yOrigin
     if ( self.renaming == 2 and ix+scrollx == self.renameTrackIdx ) then
       gfx.set( table.unpack( colors.changed ) )
@@ -1335,10 +1109,13 @@ function seq:updateGUI()
     gfx.printf( "M" )
     gfx.x = xl + 0.75 * fw - ms
     gfx.printf( "S" )
+    gfx.set( table.unpack( colors.inactive ) )
     gfx.rect( xl+.5*fw, yOrigin + 1*fh-1, 1, fh )
   end 
    
+  ---------------------------------
   -- Dark alternating colors
+  ---------------------------------
   offs = - (scrolly - 8*math.floor(scrolly/8))
   gfx.set( table.unpack( colors.linecolor2 ) )
   for iy = 6+offs,ymax+2,8 do
@@ -1358,12 +1135,14 @@ function seq:updateGUI()
   ------------------------------------------
   -- Pattern blocks
   ------------------------------------------
+  local colors = colors
   gfx.set( table.unpack( colors.textcolor ) )
   for ix=xStart,xEnd do
     for iy=0,ymax do
       gfx.x = xOrigin + (ix+1)*fw + 3
       gfx.y = yOrigin + (iy+2)*fh
       local curElement = patterns[ix+scrollx][iy+scrolly]
+      local elementColor = highlight[ix+scrollx][iy+scrolly] or 0
       if ( curElement ) then
         local nextElement = 0
         if ( patterns[ix+scrollx][iy+scrolly+1] ) then
@@ -1372,16 +1151,22 @@ function seq:updateGUI()
         if ( curElement < -1 ) then
           gfx.set( table.unpack( colors.linecolor6 ) )
         else
-          if ( highlight[ix+scrollx][iy+scrolly] ) then
-            gfx.set( table.unpack( colors.linecolor2 ) )          
-          else
+          if ( elementColor == 0 ) then
             gfx.set( table.unpack( colors.linecolor5 ) )
+          elseif ( elementColor == 1 ) then
+            gfx.set( table.unpack( colors.linecolor2 ) )
+          elseif ( elementColor == -1 ) then
+            gfx.set( table.unpack( colors.linecolor7 ) )            
           end
         end
         gfx.rect( gfx.x-3, gfx.y, fw, fh-1+nextElement )
         if ( curElement > 0 ) then
           gfx.set( table.unpack( colors.textcolor ) )
-          gfx.printf("%s", patternNames[ix+scrollx][curElement])
+          if ( elementColor == -1 ) then
+            gfx.printf("%s [M]", patternNames[ix+scrollx][curElement]:sub(1,-4))
+          else
+            gfx.printf("%s", patternNames[ix+scrollx][curElement])
+          end
         else
         end
       else
@@ -1391,7 +1176,14 @@ function seq:updateGUI()
     end
   end
   
+  --[[gfx.set( table.unpack( colors.textcolor ) )
+  for ix=xStart,xEnd+1 do
+    gfx.rect( xOrigin + fw*(ix+1), yOrigin, 1, fh*2 )
+  end
+  gfx.rect( xOrigin + fw, yOrigin, 1, gfx.h-yOrigin )  ]]--
+  
   -- Vertical lines
+  gfx.set( table.unpack( colors.inactive ) )
   for ix=xStart,xEnd+1 do
     gfx.rect( xOrigin + fw*(ix+1), yOrigin, 1, gfx.h-yOrigin )
   end
@@ -1413,7 +1205,9 @@ function seq:updateGUI()
     end
   end
   
+  -------------------------------------
   -- Cursor
+  -------------------------------------
   if ( not isempty(patterns) ) then
     gfx.set( table.unpack( colors.linecolor3 ) )
     gfx.rect( xOrigin + fw * ( 1 + xrel ) + 1, xOrigin + ( 2 + yrel ) * fh, fw - 1, fh )
@@ -1422,7 +1216,7 @@ function seq:updateGUI()
       if ( self.renaming == 1 ) then
         gfx.set( table.unpack( colors.changed ) )
       else
-        gfx.set( table.unpack( colors.textcolor ) )          
+        gfx.set( table.unpack( colors.selecttext ) )     --self.colors.selecttext     
       end
       gfx.x = xOrigin + fw * ( 1 + xrel ) + 3
       gfx.y = xOrigin + ( 2 + yrel ) * fh
@@ -1435,31 +1229,57 @@ function seq:updateGUI()
   gfx.set( table.unpack( colors.textcolor ) )
   
   -- Tick counts
+  local res = seq.res * self.cfg.zoom
   local xs = xOrigin + fw - 5
   for iy=0,ymax do
-    str = string.format( "%3d", 16 * (iy +scrolly)  )
+    str = string.format( "%3d", res * (iy +scrolly)  )
     gfx.x = xs - gfx.measurestr( str )
     gfx.y = yOrigin + (iy+2)*fh
     gfx.printf( str )
   end
   
+  ----------------------------------------------
   -- Header lines
-  gfx.set( table.unpack( colors.textcolor ) )
+  ----------------------------------------------
+  gfx.set( table.unpack( colors.inactive ) )
   gfx.rect( xOrigin+fw, yOrigin, fw * (xEnd-xStart+1), 1 )
   gfx.rect( xOrigin+fw, yOrigin + fh-1, fw * (xEnd-xStart+1), 1 )
   gfx.rect( xOrigin+fw, yOrigin + 2*fh-1, fw * (xEnd-xStart+1), 1 )
    
-  -- Pattern names
+
+  -------------------------------------
+  -- Draw pattern names
+  --------------------------------------
+  self.patternScrollbar:setPos( gfx.w - 30, 3*fh, fh * (seq.cfg.patternLines) )
+    
+  local cfg = self.cfg
+  gfx.set( table.unpack( colors.textcolor ) )
   if ( not isempty(patterns) ) then
-    local X = gfx.w - self.cfg.nameSize
-    local boxsize = self.cfg.boxsize
+    local X = gfx.w - cfg.nameSize
+    local boxsize = cfg.boxsize
     gfx.x = X 
     gfx.y = fh
     gfx.printf( "Track patterns/items" )
     local chars = seq.chars
-    local patternNames = self.patternNames
-    for i,v in pairs( patternNames[self.xpos] ) do
-      local Y = (2+i) * fh
+    local patternNames = self.patternNames[self.xpos]
+    local nP = #patternNames
+    
+    local scroll
+    if ( nP > cfg.patternLines ) then
+      scroll = math.floor( fov.scrollpat * (#patternNames - cfg.patternLines + 1) )
+    else
+      scroll = 0
+    end
+    local min = scroll
+    local max = scroll + cfg.patternLines
+    if ( max > nP ) then
+      max = nP
+    end
+    
+    local j = 1
+    for i=min+1,max do
+      local v = patternNames[i]
+      local Y = (2+j) * fh
       gfx.line(X, Y, X+boxsize, Y+boxsize)
       gfx.line(X+boxsize, Y, X, Y+boxsize)
       gfx.line(X, Y, X+boxsize, Y)
@@ -1470,13 +1290,19 @@ function seq:updateGUI()
       gfx.x = X+14
       gfx.y = Y-1
       gfx.printf( "%s. %s", chars:sub(i,i), v )
+      j = j + 1
+    end
+    
+    if ( nP > cfg.patternLines ) then
+      self.patternScrollbar:setExtent( min / nP, max / nP )
+      self.patternScrollbar:draw(colors)
     end
   end
   
   ------------------------------
   -- Play location indicator
   ------------------------------
-  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * cfg.zoom
   local playLoc = self:getPlayLocation() / rps - scrolly
 
   gfx.x = xOrigin + (fov.width+1)*fw + 3
@@ -1648,7 +1474,7 @@ function seq:mend(track, row)
 
   -- Lengthen the indexed midi item
   local cTrack = reaper.GetTrack(0, track)
-  local eps = self.cfg.eps
+  local eps = self.eps
   for i,v in pairs(trackItems) do
     if ( v[2] == cTrack ) then
       local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
@@ -1672,7 +1498,7 @@ end
 function seq:deleteRange(track, row, tcnt, rcnt, noupdate)
   local trackItems  = self.trackItems
   local rps         = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
-  local eps         = self.cfg.eps
+  local eps         = self.eps
   local reaper      = reaper
   
   -- Delete 
@@ -1754,7 +1580,7 @@ end
 function seq:insert(xpos, ypos, sign)
   local cTrack = reaper.GetTrack(0, xpos or self.xpos)
   local row = ypos or self.ypos
-  local eps = self.cfg.eps
+  local eps = self.eps
   
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local delta = (sign or 1) * rps
@@ -1846,7 +1672,7 @@ function seq:terminateAt(track, row)
   local cTrack = reaper.GetTrack(0, track or self.xpos)
   
   -- Media items
-  local eps = self.cfg.eps
+  local eps = self.eps
   for i=0,reaper.CountMediaItems(0)-1 do
     local mediaItem = reaper.GetMediaItem(0, i)
     -- Only deal with media items on this track
@@ -1864,7 +1690,7 @@ function seq:terminateAt(track, row)
   end
   
   -- Automation items
-  local eps = self.cfg.eps
+  local eps = self.eps
   if ( self.cfg.automation == 1 ) then
     for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
       local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
@@ -1890,7 +1716,7 @@ function seq:findNextItem(track, row)
 
   local minDist = 10000000000000
   local item = nil
-  local eps = self.cfg.eps
+  local eps = self.eps
   for i=0,reaper.CountMediaItems(0)-1 do
     local mediaItem = reaper.GetMediaItem(0, i)
     -- Only deal with media items on this track
@@ -1986,7 +1812,7 @@ function seq:gotoRow(row)
 end
 
 function seq:startHT(track, row)
-  local eps = self.cfg.eps
+  local eps = self.eps
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local cTrack = reaper.GetTrack(0, track)
   for i=0,reaper.CountMediaItems(0)-1 do
@@ -2008,7 +1834,7 @@ function seq:rename(track, row)
   local name, GUID
   local cTrack = reaper.GetTrack(0, track)
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
-  local eps = self.cfg.eps
+  local eps = self.eps
   
   for i=0,reaper.CountMediaItems(0)-1 do
     local mediaItem = reaper.GetMediaItem(0, i)
@@ -2200,6 +2026,11 @@ function seq:processMouseActions()
   local lastLeft            = self.lastLeft
   local rps                 = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   
+  local loc = self.patternScrollbar:mouseUpdate(gfx.mouse_x, gfx.mouse_y, left)
+  if ( loc ) then
+    self.fov.scrollpat = loc
+  end
+  
   if ( gfx.mouse_wheel ~= 0 ) then
     local scFactor = 1
     if ( ( gfx.mouse_cap & 8 ) == 0 ) then
@@ -2260,7 +2091,8 @@ function seq:processMouseActions()
               if i <= #pNames then
                 reaper.Undo_OnStateChange2(0, "Sequencer: Delete from pool")
                 reaper.MarkProjectDirty(0)
-                self:deleteFromPool(self.xpos, i)
+                local scroll = math.floor( self.fov.scrollpat * (#pNames - self.cfg.patternLines + 1) )
+                self:deleteFromPool(self.xpos, i+scroll)
                 reaper.UpdateArrange()
               end
             end
@@ -2323,6 +2155,7 @@ function seq:processMouseActions()
         local pNames = self.patternNames[self.xpos]
         -- Which pattern are we trying to delete?
         if pNames then
+          i = i + math.floor( self.fov.scrollpat * (#pNames - self.cfg.patternLines + 1) )
           if i <= #pNames then
             self.hoverGUID = self.idxToGUID[self.xpos][i]
           end
@@ -2330,6 +2163,21 @@ function seq:processMouseActions()
       end
     end
   end
+end
+
+function seq:swapTheme()
+  local j
+  for i,v in pairs( self.colorschemes ) do
+    if self.cfg.theme == v then
+      j = i
+    end
+  end
+  j = j + 1
+  if ( j > #self.colorschemes ) then
+    j = 1
+  end
+   self.cfg.theme = self.colorschemes[j]
+   self:loadColors( self.cfg.theme )
 end
 
 local function updateLoop()
@@ -2346,6 +2194,8 @@ local function updateLoop()
     if ( seq.renaming == 0 ) then
       if inputs('hackeytrackey') then
         seq:startHT(seq.xpos, seq.ypos)
+      elseif inputs('theme') then
+        seq:swapTheme()
       elseif inputs('left') then
         seq.xpos = seq.xpos - 1
         seq:resetShiftSelect()
@@ -2503,6 +2353,12 @@ local function updateLoop()
         seq:addItem( seq.charCodes[ lastChar ] )
         lastChar = 0
         seq:popPosition()
+      elseif ( inputs('zoomin') ) then
+        seq.cfg.zoom = seq.cfg.zoom * 2
+      elseif ( inputs('zoomout') ) then
+        seq.cfg.zoom = seq.cfg.zoom / 2
+      elseif ( inputs('panic') ) then
+        reaper.Main_OnCommand(40345, 0)
       end
     elseif ( seq.renaming == 1 ) then
       -- Renaming pattern
@@ -2571,9 +2427,18 @@ local function updateLoop()
         reaper.UpdateArrange()
       end
     end
+    
+    if ( seq.xpos ~= seq.lastx ) then
+      seq.fov.scrollpat = 0
+    end
 
     seq.lastx = seq.xpos
     seq.lasty = seq.ypos
+        
+    -- Check whether we have focus
+    --seq.i = (seq.i or 0) + 1
+    --print(seq.i)
+    --print(gfx.mouse_cap)
     
     reaper.defer(updateLoop)
   else
@@ -2588,11 +2453,16 @@ local function Main()
   local xpos = wpos.x or 200
   local ypos = wpos.y or 200
   
-  seq:loadColors("renoiseB")
-  seq:loadColors( "buzz" ) 
+--  seq:loadColors("renoise")
+  seq.cfg = seq:loadConfig("seq.cfg", seq.cfg)
+  seq:loadColors( seq.cfg.theme )
+  
+  --{"default", "buzz", "it", "hacker", "renoise"}
+  
   seq:loadKeys( "default" )
   gfx.init(scriptName, width, height, 0, xpos, ypos)
   seq:computeSize()
+  seq.patternScrollbar = scrollbar.create(10)
   
   reaper.defer(updateLoop)
 end
