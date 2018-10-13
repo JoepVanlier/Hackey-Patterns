@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="4be131fd139bfc9857f7234bdbc4689c956deeba">
+<index version="1" name="Hackey Sequencer" commit="2de52c89c201070413169f8ef0371f2a2051c02a">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -130,6 +130,10 @@
 + Only update internal data when user is interacting with the plugin.
 + Fix display location of wave data.]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/dc7cf1111e27f75bdfa7251f37b565b198224786/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.28" author=": Joep Vanlier" time="2018-10-13T15:17:05Z">
+        <changelog><![CDATA[+ Handle automation on the main arranger.]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/2de52c89c201070413169f8ef0371f2a2051c02a/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
