@@ -12,14 +12,15 @@
   
   Usage
   Hackey Patterns provides an alternative way for visualizing and manipulating timeline in REAPER.
-  
-  WARNING: THIS PLUGIN IS INCOMPLETE AND NOT READY FOR USE
    
   Happy sequencin' :)
 --]]
 
 --[[
  * Changelog:
+ * v0.27 (2018-10-13)
+   + Fixes in mending behaviour.
+   + Fix nil bug when number of tracks is changing.
  * v0.26 (2018-10-13)
    + Make sure HT isn't opened on OFF symbols or wave media items.
    + Make sure OFF symbols cannot be uniqueified.
@@ -1169,7 +1170,7 @@ function seq:updateGUI()
   for iy=1,ymax do
     gfx.set( table.unpack( colors.inactive ) )
     gfx.rect( xOrigin + 3,  yOrigin + (iy+1)*fh-1, fw * (xEnd-xStart+2)-3, 1 )
-  end 
+  end
   
   ------------------------------------------
   -- Pattern blocks
@@ -1247,19 +1248,21 @@ function seq:updateGUI()
   -------------------------------------
   -- Cursor
   -------------------------------------
-  if ( not isempty(patterns) ) then
-    gfx.set( table.unpack( colors.linecolor3 ) )
-    gfx.rect( xOrigin + fw * ( 1 + xrel ) + 1, xOrigin + ( 2 + yrel ) * fh, fw - 1, fh )
-    local curElement = patterns[self.xpos][self.ypos]
-    if ( curElement and curElement > 0 ) then
-      if ( self.renaming == 1 ) then
-        gfx.set( table.unpack( colors.changed ) )
-      else
-        gfx.set( table.unpack( colors.selecttext ) )     --self.colors.selecttext     
+  if ( patterns and not isempty(patterns) ) then
+    if ( patterns[self.xpos] ) then
+      gfx.set( table.unpack( colors.linecolor3 ) )
+      gfx.rect( xOrigin + fw * ( 1 + xrel ) + 1, xOrigin + ( 2 + yrel ) * fh, fw - 1, fh )
+      local curElement = patterns[self.xpos][self.ypos]
+      if ( curElement and curElement > 0 ) then
+        if ( self.renaming == 1 ) then
+          gfx.set( table.unpack( colors.changed ) )
+        else
+          gfx.set( table.unpack( colors.selecttext ) )     --self.colors.selecttext     
+        end
+        gfx.x = xOrigin + fw * ( 1 + xrel ) + 3
+        gfx.y = xOrigin + ( 2 + yrel ) * fh
+        gfx.printf("%s", patternNames[self.xpos][curElement])
       end
-      gfx.x = xOrigin + fw * ( 1 + xrel ) + 3
-      gfx.y = xOrigin + ( 2 + yrel ) * fh
-      gfx.printf("%s", patternNames[self.xpos][curElement])
     end
   end
   
@@ -1615,7 +1618,7 @@ function seq:delete()
   reaper.UpdateArrange()
   
   if ( self.ypos > 0 ) then
-    self:mend(self.xpos, self.ypos-1)
+    self:mend(self.xpos, self.ypos)
   end
 end
 
@@ -2288,12 +2291,13 @@ local function updateLoop()
   
   -- Only update data when stuff is happening (avoid plugin to constantly mess with the selection when user
   -- may be editing in the arrange view).
-  if ( lastChar > 0 or gfx.mouse_cap > 0 or seq.change == 1 ) then
+  if ( lastChar > 0 or gfx.mouse_cap > 0 or seq.change == 1 or ( seq.lastTrackCount ~= reaper.CountTracks(0) ) ) then
     seq:updateData()
     seq.change = 0
   end
   seq:updateGUI()
   gfx.update()
+  seq.lastTrackCount = reaper.CountTracks(0)
   
   if lastChar ~= -1 then
     seq.change = 1
