@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.26
+@version 0.28
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -18,6 +18,8 @@
 
 --[[
  * Changelog:
+ * v0.28 (2018-10-13)
+   + Handle automation on the main arranger.
  * v0.27 (2018-10-13)
    + Fixes in mending behaviour.
    + Fix nil bug when number of tracks is changing.
@@ -108,8 +110,8 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.26"
-postMusic = 500
+scriptName = "Hackey Patterns v0.28"
+postMusic = 15
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
 
@@ -763,6 +765,77 @@ function seq:copyUnknownToPool()
     local ret, str  = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "__OFF__", true )
     local ret, GUID = reaper.BR_GetMidiTakePoolGUID(take)
     offItem = {mediaItem, cTrack, take, GUID}
+  end
+  
+  -- Fetch list of automation items
+  if ( self.cfg.automation == 1 ) then
+    local envPositions = {}
+    for trackIdx = 0,reaper.CountTracks()-1 do
+      local cTrack = reaper.GetTrack(0, trackIdx)
+      for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+        local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+        envPositions[trackEnv] = {}
+        for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+          local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+          envPositions[trackEnv][d_pos] = i
+        end
+      end
+    end
+       
+    -- Pool should be complete. Now check whether they have automation.
+    -- If not, fetch it from tracks in the arranger view that have the same GUID.
+    for GUID,v in pairs( poolGUIDs ) do
+      local cTrack = v[2]
+      local loc = reaper.GetMediaItemInfo_Value(v[1], "D_POSITION")
+      local len = reaper.GetMediaItemInfo_Value(v[1], "D_LENGTH")      
+      
+      for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+        local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+        -- Nope, no automation here :(
+        if ( not envPositions[trackEnv][loc] ) then
+          -- Check if any track with this GUID has automation
+          local foundOne = 0
+          for i,w in pairs( trackItems ) do
+            if ( w[4] == GUID ) then
+              local loc2 = reaper.GetMediaItemInfo_Value(w[1], "D_POSITION")
+              local autoidx = envPositions[trackEnv][loc2]
+              if ( autoidx ) then
+                -- Found one that has automation! Copy it now!
+                local poolidx = reaper.GetSetAutomationItemInfo(trackEnv, autoidx, "D_POOL_ID", 0, false)
+                reaper.InsertAutomationItem(trackEnv, poolidx, loc, len)
+                foundOne = 1
+                break;
+              end              
+            end
+          end
+          if ( foundOne == 0 ) then
+            -- If we get to the end, just make a new one.
+            reaper.InsertAutomationItem(trackEnv, -1, loc, len)
+          end
+        end
+      end
+    end
+    
+    -- Synchronize pools
+    for i,v in pairs( trackItems ) do
+      local loc = reaper.GetMediaItemInfo_Value(v[1], "D_POSITION")
+      local len = reaper.GetMediaItemInfo_Value(v[1], "D_LENGTH")      
+      local cTrack = v[2]
+      for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+        local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+        
+        -- No automation here (copy from the pool!)
+        if ( not envPositions[trackEnv][loc] ) then
+          local poolItem = poolGUIDs[v[4]]
+          local autoidx
+          if ( poolItem ) then
+            autoidx = envPositions[trackEnv][reaper.GetMediaItemInfo_Value(poolItem[1], "D_POSITION")]
+            local poolIdx = reaper.GetSetAutomationItemInfo(trackEnv, autoidx, "D_POOL_ID", 0, false)
+            reaper.InsertAutomationItem(trackEnv, poolIdx, loc, len)
+          end
+        end
+      end
+    end
   end
   
   self.offItem = offItem

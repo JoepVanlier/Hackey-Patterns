@@ -15,6 +15,10 @@ Add it in your Reapack repository list: `https://raw.githubusercontent.com/joepv
 ### Install SWS extensions
 Hackey Patterns require the SWS extensions for REAPER, which can be found here: `http://www.sws-extension.org/`
 
+## Notes
+While not ideal, Hackey Patterns stores the pattern pool at a time point late in the project. You can add items to the pool here, or just place them in the project 
+area itself.
+
 ## Usage
 Hackey Patterns provides an alternative to the sequencer (arrange view) in REAPER. Modelled after Jeskola Buzz, it indexes MIDI items as patterns. 
 Once copied to the pool (this happens automatically) these patterns can be placed. Placing the pattern generates pooled copies.
@@ -23,9 +27,7 @@ Navigation can be performed by mouse or keyboard. Pressing ENTER (in the default
 amounts to the same action. A pattern can be made unique by clicking with the middle mouse button and renamed with outer mouse button. Patterns can be terminated 
 early by placing OFF symbols.
 
-## Note
-While not ideal, Hackey Patterns stores the pattern pool at a time point late in the project. You can add items to the pool here, or just place them in the project 
-area itself.
+## Keyboard shortcuts
 
   | Key                                   | Action                                                                |
   |:--------------------------------------|:----------------------------------------------------------------------|
@@ -48,6 +50,5 @@ area itself.
   | CTRL + S 							  | Save Project 														  |
   | CTRL + Z 							  | Undo 																  |
   | CTRL + Shift + Z 					  | Redo 																  |
-  |:--------------------------------------|:----------------------------------------------------------------------|
 
 
