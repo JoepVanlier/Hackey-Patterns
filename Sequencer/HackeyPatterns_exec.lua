@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.28
+@version 0.29
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -18,6 +18,8 @@
 
 --[[
  * Changelog:
+ * v0.29 (2018-10-13)
+   + Improvements to automation handling.
  * v0.28 (2018-10-13)
    + Handle automation on the main arranger.
  * v0.27 (2018-10-13)
@@ -110,8 +112,8 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.28"
-postMusic = 15
+scriptName = "Hackey Patterns v0.29 (BETA)"
+postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
 
@@ -706,7 +708,7 @@ function seq:fetchPatterns()
       if ( loc >= postMusic ) then
         poolGUIDs[GUID] = { mediaItem, track, take }
         if ( loc > maxloc[track] ) then
-          maxloc[track] = loc
+          maxloc[track] = loc + 1
         end
       else
         trackItems[c] = { mediaItem, track, take, GUID }
@@ -724,10 +726,11 @@ function seq:copyUnknownToPool()
   local reaper      = reaper
   local trackItems  = self.trackItems
   local poolGUIDs   = self.poolGUIDs
+  local eps         = self.eps
   
   self:pushPosition()
 
-  -- Check if there are any that aren't in the pool yet.
+  -- Check if there are patterns that aren't in the pool yet.
   local maxloc = self.maxloc
   for i,v in pairs( trackItems ) do
     local GUID = v[4]
@@ -739,15 +742,29 @@ function seq:copyUnknownToPool()
       reaper.Main_OnCommand(40698, 0) -- Copy selected items
       reaper.SetEditCurPos2(0, maxloc[cTrack], false, false)
       reaper.Main_OnCommand(41072, 0) -- Paste pooled
-      poolGUIDs[v[4]] = {v[1], cTrack, v[3]}
-      if ( maxloc[cTrack] ) then
-        local nloc = maxloc[cTrack] + reaper.GetMediaItemInfo_Value(v[1], "D_LENGTH")
-        maxloc[cTrack] = nloc        
+      
+      -- Find the newly created item and add it to the pool list
+      for j=0,reaper.CountMediaItems()-1 do
+        local newPoolItem = reaper.GetMediaItem(0, j)
+        local newPoolItemTrack = reaper.GetMediaItemTrack(newPoolItem)
+        if ( newPoolItemTrack == cTrack ) then
+          local nloc = reaper.GetMediaItemInfo_Value(newPoolItem, "D_POSITION")
+          if ( ( nloc > ( maxloc[cTrack] - eps ) ) and ( nloc < ( maxloc[cTrack] + eps ) ) ) then      
+            local newPoolItemTake = reaper.GetActiveTake(newPoolItem)            
+            poolGUIDs[GUID] = {newPoolItem, newPoolItemTrack, newPoolItemTake}
+            if ( maxloc[cTrack] ) then
+              local nloc = maxloc[cTrack] + reaper.GetMediaItemInfo_Value(v[1], "D_LENGTH") + 1
+              maxloc[cTrack] = nloc        
+            end
+            break;
+          end
+        end
       end
       
       -- 40058 is paste, 41072 is paste pooled
     end
   end
+  
   
   -- Deal with the OFF items separately. They are not part of the regular pooling
   local offItem = nil
@@ -767,7 +784,7 @@ function seq:copyUnknownToPool()
     offItem = {mediaItem, cTrack, take, GUID}
   end
   
-  -- Fetch list of automation items
+  -- Fetch and synchronize list of automation items
   if ( self.cfg.automation == 1 ) then
     local envPositions = {}
     for trackIdx = 0,reaper.CountTracks()-1 do
@@ -788,7 +805,6 @@ function seq:copyUnknownToPool()
       local cTrack = v[2]
       local loc = reaper.GetMediaItemInfo_Value(v[1], "D_POSITION")
       local len = reaper.GetMediaItemInfo_Value(v[1], "D_LENGTH")      
-      
       for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
         local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
         -- Nope, no automation here :(
@@ -803,6 +819,7 @@ function seq:copyUnknownToPool()
                 -- Found one that has automation! Copy it now!
                 local poolidx = reaper.GetSetAutomationItemInfo(trackEnv, autoidx, "D_POOL_ID", 0, false)
                 reaper.InsertAutomationItem(trackEnv, poolidx, loc, len)
+                envPositions[trackEnv][loc] = autoidx
                 foundOne = 1
                 break;
               end              
@@ -810,7 +827,8 @@ function seq:copyUnknownToPool()
           end
           if ( foundOne == 0 ) then
             -- If we get to the end, just make a new one.
-            reaper.InsertAutomationItem(trackEnv, -1, loc, len)
+            local autoidx = reaper.InsertAutomationItem(trackEnv, -1, loc, len)
+            envPositions[trackEnv][loc] = autoidx
           end
         end
       end
@@ -830,8 +848,10 @@ function seq:copyUnknownToPool()
           local autoidx
           if ( poolItem ) then
             autoidx = envPositions[trackEnv][reaper.GetMediaItemInfo_Value(poolItem[1], "D_POSITION")]
-            local poolIdx = reaper.GetSetAutomationItemInfo(trackEnv, autoidx, "D_POOL_ID", 0, false)
-            reaper.InsertAutomationItem(trackEnv, poolIdx, loc, len)
+            if ( autoidx ) then
+              local poolIdx = reaper.GetSetAutomationItemInfo(trackEnv, autoidx, "D_POOL_ID", 0, false)
+              reaper.InsertAutomationItem(trackEnv, poolIdx, loc, len)
+            end
           end
         end
       end
@@ -1933,6 +1953,7 @@ function seq:addItemDirect(v)
           if ( e_pos == m_pos ) then
             local poolidx = reaper.GetSetAutomationItemInfo(env, i, "D_POOL_ID", 0, false)
             reaper.InsertAutomationItem(env, poolidx, self.ypos*rps, len)
+            break;
           end
         end
       end
