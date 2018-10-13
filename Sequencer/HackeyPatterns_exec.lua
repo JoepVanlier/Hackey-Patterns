@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.25
+@version 0.26
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,11 @@
 
 --[[
  * Changelog:
+ * v0.26 (2018-10-13)
+   + Make sure HT isn't opened on OFF symbols or wave media items.
+   + Make sure OFF symbols cannot be uniqueified.
+   + Only update internal data when user is interacting with the plugin.
+   + Fix display location of wave data.
  * v0.25 (2018-10-13)
    + Fix redraw bug
    + Added OFF marker (still a known bug with opening hackey trackey on such a tiny item)
@@ -102,7 +107,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.25"
+scriptName = "Hackey Patterns v0.26"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -213,7 +218,6 @@ function seq:loadKeys( keySet )
     keys.setloop        = { 1,    0,  0,    12 }            -- CTRL + L
     keys.setloopstart   = { 1,    0,  0,    17 }            -- CTRL + Q
     keys.setloopend     = { 1,    0,  0,    23 }            -- CTRL + W
-    keys.interpolate    = { 1,    0,  0,    9 }             -- CTRL + I
     keys.shiftleft      = { 0,    0,  1,    1818584692 }    -- Shift + <-
     keys.shiftright     = { 0,    0,  1,    1919379572 }    -- Shift + ->
     keys.shiftup        = { 0,    0,  1,    30064 }         -- Shift + /\
@@ -268,7 +272,6 @@ function seq:loadKeys( keySet )
       { 'CTRL + B/E', 'Selection begin/End' },
       { 'SHIFT + Arrow Keys', 'Block selection' },
       { 'CTRL + C/X/V', 'Copy / Cut / Paste' },
-      { 'CTRL + I', 'Interpolate' },
       { 'Shift + Del', 'Delete block' },
       { 'CTRL + (SHIFT) + Z', 'Undo / Redo' }, 
       { 'SHIFT + Alt + Up/Down', '[Res]olution Up/Down' },
@@ -613,6 +616,11 @@ function seq:uniqueMIDI(track, row)
     if ( v[2] == cTrack ) then
       local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
       if ( math.floor( pos / rps + eps ) == row ) then
+        -- Do not unique-ify OFF symbols
+        if ( v[4] == self.offItem[4] ) then
+          return
+        end
+      
         reaper.SetMediaItemInfo_Value( v[1], "B_UISEL", 1 )
         local ret, str = reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", "", false)       
         --self.patternNames[self.xpos][self.patterns[self.xpos][self.ypos]]
@@ -1006,7 +1014,7 @@ function seq:populateSequencer()
     local len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")    
     local ystart = math.floor(pos/dy + eps)
     local yend = math.ceil((pos+len)/dy - eps)
-    for q = ystart+1,yend-1 do
+    for q = ystart,yend-1 do
       patterns[trackIdx][q] = -2
       if ( mute == 1 ) then
         highlight[trackIdx][q] = -1
@@ -1544,14 +1552,29 @@ function seq:deleteRange(track, row, tcnt, rcnt, noupdate)
   local rps         = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local eps         = self.eps
   local reaper      = reaper
+  local cTrack      = reaper.GetTrack(0, track)
   
   -- Delete 
-  local cTrack = reaper.GetTrack(0, track)
-  for i,v in pairs(trackItems) do
-    if ( v[2] == cTrack ) then
-      local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
-      if ( math.floor( pos / rps + eps ) == row ) then
-        reaper.DeleteTrackMediaItem(v[2], v[1])
+  --for i,v in pairs(trackItems) do
+  --  if ( v[2] == cTrack ) then
+  --    local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
+  --    if ( math.floor( pos / rps + eps ) == row ) then
+  --      reaper.DeleteTrackMediaItem(v[2], v[1])
+  --    end
+  --  end
+  --end
+  
+  for i=0,reaper.CountMediaItems(0)-1 do
+    local mediaItem = reaper.GetMediaItem(0, i)
+    if ( mediaItem ) then
+      -- Only deal with media items on this track
+      if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
+        local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
+        if ( d_pos < postMusic ) then
+          if ( math.floor( d_pos / rps + eps ) == row ) then
+            reaper.DeleteTrackMediaItem(cTrack, mediaItem)
+          end
+        end
       end
     end
   end
@@ -1640,9 +1663,9 @@ function seq:insert(xpos, ypos, sign)
           reaper.SetMediaItemInfo_Value(mediaItem, "D_POSITION", d_pos + delta)
         else
           local d_len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")
-          if ( math.floor( (d_pos + d_len) / rps + eps ) > row ) then
+          if ( math.floor( (d_pos + d_len) / rps + eps ) >= row ) then
             -- Grow/Shrink this one!
-            --reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", d_len + delta)
+            reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", d_len + delta)
           end
         end
       end
@@ -1861,6 +1884,15 @@ function seq:gotoRow(row)
   reaper.DeleteProjectMarker(0, loc, 0)
 end
 
+function seq:getGUID(mediaItem)
+  local take = reaper.GetActiveTake(mediaItem)
+  if ( reaper.TakeIsMIDI(take) ) then
+    local retval
+    retval, GUID = reaper.BR_GetMidiTakePoolGUID(take)
+    return GUID
+  end
+end
+
 function seq:startHT(track, row)
   local eps = self.eps
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
@@ -1870,10 +1902,18 @@ function seq:startHT(track, row)
     -- Only deal with media items on this track
     if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
       local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
-      if ( math.floor( d_pos / rps + eps ) == row ) then
-        reaper.SetProjExtState(0, "MVJV001", "initialiseAtTrack", track)
-        reaper.SetProjExtState(0, "MVJV001", "initialiseAtRow", row*rps)
-        self:callScript(hackeyTrackey)
+        if ( math.floor( d_pos / rps + eps ) == row ) then
+          local GUID = self:getGUID(mediaItem)
+        
+          if ( GUID ) then
+            -- Do not unique-ify OFF symbols
+            if ( GUID == self.offItem[4] ) then
+              return
+          end
+          reaper.SetProjExtState(0, "MVJV001", "initialiseAtTrack", track)
+          reaper.SetProjExtState(0, "MVJV001", "initialiseAtRow", row*rps)
+          self:callScript(hackeyTrackey)
+        end
       end
     end
   end
@@ -2065,6 +2105,7 @@ function seq:callScript(scriptName)
 end
 
 function seq:processMouseActions()
+  local seq                 = seq
   local gfx                 = gfx
   local fw                  = self.cellw
   local fh                  = self.cellh
@@ -2231,17 +2272,31 @@ function seq:swapTheme()
 end
 
 local function updateLoop()
+
+  if ( not reaper.GetTrack(0,0) ) then
+    reaper.ShowMessageBox("Error: This project has no tracks.", "Error", 0)
+    gfx.quit()
+    return
+  end
+
   prevChar = lastChar
   lastChar = gfx.getchar()
-  seq:updateData()
-  seq:updateGUI()
-  gfx.update()
   
   if ( seq.renaming == 0 ) then
     seq:processMouseActions()
   end
   
+  -- Only update data when stuff is happening (avoid plugin to constantly mess with the selection when user
+  -- may be editing in the arrange view).
+  if ( lastChar > 0 or gfx.mouse_cap > 0 or seq.change == 1 ) then
+    seq:updateData()
+    seq.change = 0
+  end
+  seq:updateGUI()
+  gfx.update()
+  
   if lastChar ~= -1 then
+    seq.change = 1
     if ( seq.renaming == 0 ) then
       if inputs('hackeytrackey') then
         seq:startHT(seq.xpos, seq.ypos)
@@ -2417,6 +2472,8 @@ local function updateLoop()
         seq.cfg.zoom = seq.cfg.zoom / 2
       elseif ( inputs('panic') ) then
         reaper.Main_OnCommand(40345, 0)
+      else
+        seq.change = 0
       end
     elseif ( seq.renaming == 1 ) then
       -- Renaming pattern
@@ -2509,7 +2566,7 @@ local function Main()
   local width = wpos.w or 200
   local height = wpos.h or 200
   local xpos = wpos.x or 200
-  local ypos = wpos.y or 200
+  local ypos = wpos.y or 200 
   
 --  seq:loadColors("renoise")
   seq.cfg = seq:loadConfig("seq.cfg", seq.cfg)
@@ -2522,6 +2579,7 @@ local function Main()
   seq:computeSize()
   seq.patternScrollbar = scrollbar.create(10)
   
+  seq:updateData()
   reaper.defer(updateLoop)
 end
 
