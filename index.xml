@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="dc7cf1111e27f75bdfa7251f37b565b198224786">
+<index version="1" name="Hackey Sequencer" commit="4be131fd139bfc9857f7234bdbc4689c956deeba">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -11,7 +11,6 @@
 {\pard \ql \f0 \sa180 \li0 \fi0 \b \fs24 What is it?\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 A lightweight sequencer plugin for REAPER 5.x and up.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Usage Hackey Patterns provides an alternative way for visualizing and manipulating timeline in REAPER.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 WARNING: THIS PLUGIN IS INCOMPLETE AND NOT READY FOR USE\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Happy sequencin' :)\par}
 }
 ]]></description>
