@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.24
+@version 0.25
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,7 +20,10 @@
 
 --[[
  * Changelog:
- * v0.24 (2018-10-10)
+ * v0.25 (2018-10-13)
+   + Fix redraw bug
+   + Added OFF marker (still a known bug with opening hackey trackey on such a tiny item)
+ * v0.24 (2018-10-12)
    + Allow visualization of mute status.
    + Improved renoise color scheme.
    + Added zoom (+/-)
@@ -99,7 +102,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.24"
+scriptName = "Hackey Patterns v0.25"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -735,6 +738,25 @@ function seq:copyUnknownToPool()
     end
   end
   
+  -- Deal with the OFF items separately. They are not part of the regular pooling
+  local offItem = nil
+  for i,v in pairs( poolGUIDs ) do
+    local ret, str = reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", "", false )
+    if ( str == "__OFF__" ) then
+      offItem = {v[1], v[2], v[3], i}
+      poolGUIDs[i] = nil
+    end
+  end
+  if ( not offItem ) then
+    local cTrack    = reaper.GetTrack(0,0)
+    local mediaItem = reaper.CreateNewMIDIItemInProj(cTrack, maxloc[cTrack], reaper.TimeMap2_QNToTime(0, 1) * 0.125, nil)
+    local take      = reaper.GetActiveTake(mediaItem)
+    local ret, str  = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "__OFF__", true )
+    local ret, GUID = reaper.BR_GetMidiTakePoolGUID(take)
+    offItem = {mediaItem, cTrack, take, GUID}
+  end
+  
+  self.offItem = offItem
   self.poolGUIDs = poolGUIDs
   self.maxloc = maxloc
   
@@ -812,7 +834,6 @@ function seq:deleteFromPool(trackidx, poolidx)
   reaper.Main_OnCommand(40006, 0) -- Delete automation items
 end
 
-
 -- Index the GUID
 function seq:buildPatternList()
   -- These tables should eventually be stored and loaded from the track
@@ -831,7 +852,16 @@ function seq:buildPatternList()
       guidToPatternIdx[jTrack] = {}
       idxToGUID[jTrack] = {}
       patternNames[jTrack] = {}
+      
+      guidToPatternIdx[jTrack][self.offItem[4]] = 0
+      idxToGUID[jTrack][0] = self.offItem[4]
+      patternNames[jTrack][0] = "OFF"
     end
+  end
+  
+  local idx = {}
+  for jTrack=0,nTracks-1 do
+    idx[jTrack] = 1
   end
   
   -- Sort the GUID table
@@ -994,6 +1024,7 @@ function seq:populateSequencer()
     local q = ystart
     local trackIdx = trackToIndex[v[2]]
     patterns[trackIdx][q] = guidToPatternIdx[trackIdx][trackGUID]
+    --print(self.patternNames[trackIdx][guidToPatternIdx[trackIdx][trackGUID]])
     if ( mute == 1 ) then
       highlight[trackIdx][q] = -1
     end
@@ -1160,7 +1191,7 @@ function seq:updateGUI()
           end
         end
         gfx.rect( gfx.x-3, gfx.y, fw, fh-1+nextElement )
-        if ( curElement > 0 ) then
+        if ( curElement >= 0 ) then
           gfx.set( table.unpack( colors.textcolor ) )
           if ( elementColor == -1 ) then
             gfx.printf("%s [M]", patternNames[ix+scrollx][curElement]:sub(1,-4))
@@ -1489,6 +1520,19 @@ function seq:mend(track, row)
             itemLen = maxLen
           end
           reaper.SetMediaItemInfo_Value( v[1], "D_LENGTH", itemLen )
+          
+          if ( self.cfg.automation == 1 ) then
+            for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+              local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+              for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+                local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+                local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)                
+                if ( math.floor( d_pos / rps + eps ) <= row and math.floor( (d_pos+d_len)/rps + eps ) >= row ) then
+                  reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", itemLen, true)
+                end
+              end
+            end
+          end
         end
       end
     end
@@ -1598,7 +1642,7 @@ function seq:insert(xpos, ypos, sign)
           local d_len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")
           if ( math.floor( (d_pos + d_len) / rps + eps ) > row ) then
             -- Grow/Shrink this one!
-            reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", d_len + delta)
+            --reaper.SetMediaItemInfo_Value(mediaItem, "D_LENGTH", d_len + delta)
           end
         end
       end
@@ -1618,7 +1662,7 @@ function seq:insert(xpos, ypos, sign)
             local d_len = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", 0, false)
             if ( math.floor( (d_pos + d_len) / rps + eps ) > row ) then
               -- Grow/Shrink this one!
-              reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", d_len + delta, true)
+              --reaper.GetSetAutomationItemInfo(trackEnv, i, "D_LENGTH", d_len + delta, true)
             end
           end
         end
@@ -1736,13 +1780,19 @@ function seq:findNextItem(track, row)
   return minDist,item
 end
 
+function seq:off()
+  seq:addItemDirect(self.offItem)
+end
+
 function seq:addItem( idx )
-  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
-  
   -- Actually paste the new pattern
   local GUID = self.idxToGUID[self.xpos][ idx ]
   local v = self.poolGUIDs[ GUID ]
+  self:addItemDirect(v)
+end
 
+function seq:addItemDirect(v)
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   if ( v ) then
     -- Delete what we are overwriting
     self:deleteRange(self.xpos, self.ypos, 0, 0)
@@ -2185,6 +2235,7 @@ local function updateLoop()
   lastChar = gfx.getchar()
   seq:updateData()
   seq:updateGUI()
+  gfx.update()
   
   if ( seq.renaming == 0 ) then
     seq:processMouseActions()
@@ -2328,6 +2379,13 @@ local function updateLoop()
         seq.xpos = oldx
         seq:popPosition()
         reaper.UpdateArrange()
+      elseif ( inputs('off') ) then
+        reaper.Undo_OnStateChange2(0, "Sequencer: Off (Off)")
+        reaper.MarkProjectDirty(0)
+        seq:pushPosition()
+        seq:off()
+        seq:popPosition()
+        reaper.UpdateArrange()        
       elseif ( inputs('delete') ) then
         reaper.Undo_OnStateChange2(0, "Sequencer: Delete (Del)")
         reaper.MarkProjectDirty(0)
