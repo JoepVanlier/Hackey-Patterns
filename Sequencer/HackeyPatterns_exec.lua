@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.29
+@version 0.30
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -13,11 +13,17 @@
   Usage
   Hackey Patterns provides an alternative way for visualizing and manipulating timeline in REAPER.
    
+  Special thanks go out to TonE for reporting tons of issues.
+  
   Happy sequencin' :)
 --]]
 
 --[[
  * Changelog:
+ * v0.30 (2018-10-16)
+   + Actually assign name to unnamed items.
+   + Bugfix OFF placement (used to always go to first column).
+   + Split action added.
  * v0.29 (2018-10-13)
    + Improvements to automation handling.
  * v0.28 (2018-10-13)
@@ -112,7 +118,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.29 (BETA)"
+scriptName = "Hackey Patterns v0.30 (BETA)"
 postMusic = 500
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -146,10 +152,14 @@ seq.cfg.followRow     = 1
 seq.cfg.patternLines  = 30
 seq.cfg.followTrackSelection = 1
 seq.cfg.theme         = "renoise"
-  
+seq.cfg.renameSplit   = 1
+
 seq.advance       = 1
 seq.cfg.zoom      = 1
 seq.eps           = 0.000001
+
+seq.offSymbol     =  "         OFF"
+--seq.offSymbol     =  "OFF"
 
 seq.cp = {}
 seq.cp.lastShiftCoord = nil
@@ -250,6 +260,9 @@ function seq:loadKeys( keySet )
     keys.insertRow      = { 1,    0,  0,    6909555 }       -- Insert row CTRL+Ins
     keys.removeRow      = { 1,    0,  0,    8 }             -- Remove Row CTRL+Backspace  
     
+    keys.split          = { 0,    0,  0,    115 }           -- Split action
+    keys.uniqueify      = { 0,    0,  0,    117 }           -- Uniqueify
+    
     keys.m0             = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
     keys.m25            = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
     keys.m50            = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
@@ -279,9 +292,9 @@ function seq:loadKeys( keySet )
       { 'CTRL + C/X/V', 'Copy / Cut / Paste' },
       { 'Shift + Del', 'Delete block' },
       { 'CTRL + (SHIFT) + Z', 'Undo / Redo' }, 
-      { 'SHIFT + Alt + Up/Down', '[Res]olution Up/Down' },
-      { 'SHIFT + Alt + Enter', '[Res]olution Commit' },  
       { 'F4/F5', '[Adv]ance De/Increase' },
+      { 'U', 'Unpool pattern' },
+      { 'S', 'Split pattern' },
       { 'F11/F12', 'Switch Theme / Panic' },
       { 'CTRL + Left/Right', 'Switch MIDI item/track' },   
       { 'CTRL + Shift + Left/Right', 'Switch Track' },         
@@ -435,7 +448,7 @@ function seq:loadColors(colorScheme)
     self.colors.customFontDisplace  = { 8, -3 }
   end
   -- clear colour is in a different format
-  gfx.clear = seq.colors.windowbackground[1]*256+(seq.colors.windowbackground[2]*256*256)+(seq.colors.windowbackground[3]*256*256*256)
+  gfx.clear                       = seq.colors.windowbackground[1]*256+(seq.colors.windowbackground[2]*256*256)+(seq.colors.windowbackground[3]*256*256*256)
   self.colors.red                 = {1, 0.4, 0.2, 0.4}
   self.colors.green               = {.7, 1.0, 0.4, 0.4}
   local mix                       = 0.5
@@ -608,33 +621,61 @@ function seq:newName(name)
   return testName
 end
 
-function seq:uniqueMIDI(track, row)
+-- Find a MIDI item at a specific location. Heavier than selectMIDI, but required when index is not up to date
+function seq:findMIDI(track, row)
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local eps = self.eps
+  local trackToIndex = self.trackToIndex
+  
+  for i=0,reaper.CountMediaItems()-1 do
+    local mediaItem = reaper.GetMediaItem(0, i)
+    local trackHandle = reaper.GetMediaItemTrack(mediaItem)
+    if ( trackToIndex[trackHandle] == track ) then
+      local pos = reaper.GetMediaItemInfo_Value( mediaItem, "D_POSITION" )
+      if ( math.floor( pos / rps + eps ) == row ) then
+        local take = reaper.GetActiveTake( mediaItem )
+        if ( reaper.TakeIsMIDI( take ) ) then
+          return { mediaItem, trackHandle, take }
+        end
+      end
+    end
+  end
+end
+
+function seq:selectMIDI(track, row)
   local trackItems = self.trackItems
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local eps = self.eps
 
   --41613  Item: Remove active take from MIDI source data pool (AKA un-pool, un-ghost, make unique)
   reaper.SelectAllMediaItems(0, false)
-
   local cTrack = reaper.GetTrack(0, track)
   for i,v in pairs(trackItems) do
     if ( v[2] == cTrack ) then
       local pos = reaper.GetMediaItemInfo_Value( v[1], "D_POSITION" )
       if ( math.floor( pos / rps + eps ) == row ) then
-        -- Do not unique-ify OFF symbols
+        -- Do not select OFF symbols
         if ( v[4] == self.offItem[4] ) then
           return
+        else
+          return v
         end
-      
-        reaper.SetMediaItemInfo_Value( v[1], "B_UISEL", 1 )
-        local ret, str = reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", "", false)       
-        --self.patternNames[self.xpos][self.patterns[self.xpos][self.ypos]]
-        reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", seq:newName(str), true)
       end
     end
   end
-  
-  reaper.Main_OnCommand(41613, 0) -- Unpool MIDI item
+end
+
+function seq:uniqueMIDI(track, row, norename)
+  --41613  Item: Remove active take from MIDI source data pool (AKA un-pool, un-ghost, make unique)
+  local v = self:findMIDI(track, row)
+  if ( v ) then
+    reaper.SetMediaItemInfo_Value( v[1], "B_UISEL", 1 )
+    if ( not norename ) then
+      local ret, str = reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", "", false)       
+      reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", seq:newName(str), true)
+    end
+    reaper.Main_OnCommand(41613, 0) -- Unpool MIDI item    
+  end
 end
 
 function seq:uniqueAutomation(track, row)
@@ -654,7 +695,6 @@ function seq:uniqueAutomation(track, row)
           reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 1, true)
           reaper.SetEditCurPos2(0, d_pos, false, false)
           reaper.SetCursorContext(2, trackEnv)
---          reaper.Main_OnCommand(40699, 0) -- Cut items
           reaper.Main_OnCommand(40059, 0) -- Cut items
           reaper.Main_OnCommand(40058, 0) -- Paste items 
         end
@@ -663,12 +703,86 @@ function seq:uniqueAutomation(track, row)
   end
 end
 
+function seq:automationAction(track, row, cmd, action_pos)
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local cTrack = reaper.GetTrack(0, track)
+
+  -- Select only the automation items of interest.
+  local selected
+  local eps = self.eps
+  if ( self.cfg.automation == 1 ) then
+    for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
+      local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
+      for i=0,reaper.CountAutomationItems(trackEnv)-1 do
+        local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
+        if ( math.floor( d_pos / rps + eps ) == row ) then
+          reaper.Main_OnCommand(40769, 0) -- Deselect all items
+          reaper.GetSetAutomationItemInfo(trackEnv, i, "D_UISEL", 1, true)
+          reaper.SetEditCurPos2(0, action_pos, false, false)
+          reaper.SetCursorContext(2, trackEnv)
+          reaper.Main_OnCommand(cmd, 0) -- Cut items
+        end
+      end
+    end
+  end
+end
+
+function seq:split(track, row)
+  local patterns = self.patterns
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  
+  -- Is this in an item?
+  if ( patterns[track][row] == -1 ) then
+    -- Find the row where the item that is playing here starts
+    local crow = row
+    while( patterns[track][crow] == -1 ) do
+      crow = crow - 1;
+      if ( crow < 0 ) then
+        reaper.ShowMessageBox("Critical error. Crow managed to become smaller than zero while seeking. Please report this bug.", "Error", 0)
+        return
+      end
+    end
+    
+    -- Uniqueify the pattern
+    self:pushPosition()
+    local v = self:selectMIDI(track, crow)
+    if ( v ) then
+      local len = math.floor(reaper.GetMediaItemInfo_Value( v[1], "D_LENGTH", 1 ) / rps)
+      reaper.SetMediaItemInfo_Value( v[1], "B_UISEL", 1 )
+      reaper.SetEditCurPos2(0, rps*row, false, false)
+      reaper.Main_OnCommand(40012, 0) -- Split the MIDI
+      self:uniqueMIDI(track, crow, 1) -- Depool the chunks (without rename)      
+      self:uniqueMIDI(track, row,  1) -- Depool the chunks (without rename)      
+      
+      if ( self.cfg.renameSplit == 1 ) then
+        local v = self:findMIDI(track, crow)
+        local ret, name = reaper.GetSetMediaItemTakeInfo_String( v[3], "P_NAME", "", false )
+        name = string.format("%s %d/%d", name, row-crow, len)
+        reaper.GetSetMediaItemTakeInfo_String( v[3], "P_NAME", name, true )
+        
+        local v = self:findMIDI(track, row)
+        local ret, name = reaper.GetSetMediaItemTakeInfo_String( v[3], "P_NAME", "", false )
+        name = string.format("%s %d/%d", name, len-(row-crow), len)
+        reaper.GetSetMediaItemTakeInfo_String( v[3], "P_NAME", name, true )
+      end
+      
+      seq:automationAction(track, crow, 40012, rps*row ) -- Split the automation
+      self:uniqueAutomation(track, row)      
+      self:uniqueAutomation(track, crow)
+      self:popPosition()
+    end
+  end
+end
+
 function seq:pushPosition()
-  seq.posList[#seq.posList+1] = reaper.GetCursorPosition()
+  local start_time_view, end_time_view = reaper.BR_GetArrangeView(0)
+  seq.posList[#seq.posList+1] = { reaper.GetCursorPosition(), start_time_view, end_time_view }
 end
 
 function seq:popPosition()
-  reaper.SetEditCurPos2(0, seq.posList[#seq.posList], true, false)
+  local stackItem = seq.posList[#seq.posList]
+  reaper.SetEditCurPos2(0, stackItem[1], true, false)
+  reaper.BR_SetArrangeView(0, stackItem[2], stackItem[3])
   seq.posList[#seq.posList] = nil
 end
 
@@ -702,8 +816,8 @@ function seq:fetchPatterns()
     
     -- Is it a midi take?
     if ( reaper.TakeIsMIDI(take) ) then
-      local retval, GUID = reaper.BR_GetMidiTakePoolGUID(take)
-      
+      local retval, GUID    = reaper.BR_GetMidiTakePoolGUID(take)
+      local name = reaper.GetTakeName(take)
       local loc = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
       if ( loc >= postMusic ) then
         poolGUIDs[GUID] = { mediaItem, track, take }
@@ -742,11 +856,12 @@ function seq:copyUnknownToPool()
       reaper.Main_OnCommand(40698, 0) -- Copy selected items
       reaper.SetEditCurPos2(0, maxloc[cTrack], false, false)
       reaper.Main_OnCommand(41072, 0) -- Paste pooled
-      
+
       -- Find the newly created item and add it to the pool list
       for j=0,reaper.CountMediaItems()-1 do
-        local newPoolItem = reaper.GetMediaItem(0, j)
-        local newPoolItemTrack = reaper.GetMediaItemTrack(newPoolItem)
+        local newPoolItem           = reaper.GetMediaItem(0, j)
+        local newPoolItemTrack      = reaper.GetMediaItemTrack(newPoolItem)
+
         if ( newPoolItemTrack == cTrack ) then
           local nloc = reaper.GetMediaItemInfo_Value(newPoolItem, "D_POSITION")
           if ( ( nloc > ( maxloc[cTrack] - eps ) ) and ( nloc < ( maxloc[cTrack] + eps ) ) ) then      
@@ -764,7 +879,6 @@ function seq:copyUnknownToPool()
       -- 40058 is paste, 41072 is paste pooled
     end
   end
-  
   
   -- Deal with the OFF items separately. They are not part of the regular pooling
   local offItem = nil
@@ -945,6 +1059,7 @@ function seq:buildPatternList()
   local trackToIndex      = self.trackToIndex
   local nChars            = self.cfg.nChars
   local cellw             = self.cellw
+  local offSymbol         = self.offSymbol
   local nTracks           = reaper.CountTracks(0)
   
   local idx = {}
@@ -957,7 +1072,7 @@ function seq:buildPatternList()
       
       guidToPatternIdx[jTrack][self.offItem[4]] = 0
       idxToGUID[jTrack][0] = self.offItem[4]
-      patternNames[jTrack][0] = "OFF"
+      patternNames[jTrack][0] = offSymbol
     end
   end
   
@@ -988,9 +1103,13 @@ function seq:buildPatternList()
       
       local str = reaper.GetTakeName(v[3])
       if ( str == "untitled MIDI item" ) then
-        patternNames[trackidx][index] = string.format("%02d", index)
+        local name = string.format("%02d", index)
+        patternNames[trackidx][index] = name
+        reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true)
       elseif ( str == "" ) then
-        patternNames[trackidx][index] = string.format("%02d", index)      
+        local name = string.format("%02d", index)
+        patternNames[trackidx][index] = name
+        reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true)        
       else
         patternNames[trackidx][index] = fitStr( str, cellw )
       end
@@ -1381,7 +1500,6 @@ function seq:updateGUI()
   gfx.rect( xOrigin+fw, yOrigin + fh-1, fw * (xEnd-xStart+1), 1 )
   gfx.rect( xOrigin+fw, yOrigin + 2*fh-1, fw * (xEnd-xStart+1), 1 )
    
-
   -------------------------------------
   -- Draw pattern names
   --------------------------------------
@@ -1929,6 +2047,7 @@ function seq:addItemDirect(v)
     -- Copy and move to where we want to paste
     reaper.Main_OnCommand(40698, 0) -- Copy selected items
     reaper.SetEditCurPos2(0, self.ypos*rps, false, false)
+    reaper.SetOnlyTrackSelected(reaper.GetTrack(0, self.xpos))
     
     -- Check how much space we have before pasting
     local mindist = self:findNextItem(self.xpos, self.ypos)
@@ -2390,7 +2509,6 @@ local function updateLoop()
     seq.change = 0
   end
   seq:updateGUI()
-  gfx.update()
   seq.lastTrackCount = reaper.CountTracks(0)
   
   if lastChar ~= -1 then
@@ -2554,6 +2672,16 @@ local function updateLoop()
         seq:popPosition()
         reaper.UpdateArrange()
         seq.ypos = seq.ypos + seq.advance
+      elseif ( inputs('split') ) then
+        lastChar = 0
+        reaper.Undo_OnStateChange2(0, "Sequencer: Split Pattern")
+        reaper.MarkProjectDirty(0)
+        seq:split(seq.xpos, seq.ypos)
+      elseif ( inputs('uniqueify') ) then
+        lastChar = 0
+        reaper.Undo_OnStateChange2(0, "Sequencer: Uniqueify Pattern")
+        reaper.MarkProjectDirty(0)
+        seq:uniqueifyElement(seq.xpos, seq.ypos)
       elseif ( inputs('playfrom') ) then
         seq:gotoRow(seq.ypos)
         reaper.Main_OnCommand(40044, 0)
@@ -2652,7 +2780,7 @@ local function updateLoop()
     --seq.i = (seq.i or 0) + 1
     --print(seq.i)
     --print(gfx.mouse_cap)
-    
+    gfx.update()
     reaper.defer(updateLoop)
   else
     seq:terminate()
@@ -2660,6 +2788,12 @@ local function updateLoop()
 end
 
 local function Main()
+  if ( not reaper.GetTrack(0,0) ) then
+    reaper.ShowMessageBox("Error: This project has no tracks.", "Error", 0)
+    gfx.quit()
+    return
+  end
+
   local wpos = seq:loadConfig("_wpos.cfg", {})  
   local width = wpos.w or 200
   local height = wpos.h or 200
