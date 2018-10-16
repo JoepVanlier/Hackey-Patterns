@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.30
+@version 0.31
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.31 (2018-10-16)
+   + Set pool position super late.
  * v0.30 (2018-10-16)
    + Actually assign name to unnamed items.
    + Bugfix OFF placement (used to always go to first column).
@@ -118,8 +120,8 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.30 (BETA)"
-postMusic = 500
+scriptName = "Hackey Patterns v0.31 (BETA)"
+postMusic = 50000
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
 
