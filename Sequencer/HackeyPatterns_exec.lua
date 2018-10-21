@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.31
+@version 0.32
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.32 (2018-10-16)
+   + Start pattern indexing at 0.
  * v0.31 (2018-10-16)
    + Set pool position super late.
  * v0.30 (2018-10-16)
@@ -120,7 +122,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.31 (BETA)"
+scriptName = "Hackey Patterns v0.32 (BETA)"
 postMusic = 50000
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -1105,11 +1107,11 @@ function seq:buildPatternList()
       
       local str = reaper.GetTakeName(v[3])
       if ( str == "untitled MIDI item" ) then
-        local name = string.format("%02d", index)
+        local name = string.format("%02d", index-1)
         patternNames[trackidx][index] = name
         reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true)
       elseif ( str == "" ) then
-        local name = string.format("%02d", index)
+        local name = string.format("%02d", index-1)
         patternNames[trackidx][index] = name
         reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true)        
       else
