@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.34
+@version 0.35
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.35 (2018-10-21)
+   + Added option in cfg file for asymmetric scrolling.
  * v0.34 (2018-10-16)
    + Push OFF slight further to right.
  * v0.33 (2018-10-16)
@@ -126,7 +128,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.34 (BETA)"
+scriptName = "Hackey Patterns v0.35 (BETA)"
 postMusic = 50000
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -150,17 +152,18 @@ seq.lastLeftTime = 0
 seq.posList = {}
 
 seq.cfg = {}
-seq.cfg.nChars        = 9
-seq.cfg.nameSize      = 160
-seq.cfg.page          = 4
-seq.cfg.automation    = 1
-seq.cfg.boxsize       = 8
-seq.cfg.largeScroll   = 4
-seq.cfg.followRow     = 1
-seq.cfg.patternLines  = 30
+seq.cfg.nChars         = 9
+seq.cfg.nameSize       = 160
+seq.cfg.page           = 4
+seq.cfg.automation     = 1
+seq.cfg.boxsize        = 8
+seq.cfg.followRow      = 1
+seq.cfg.patternLines   = 30
 seq.cfg.followTrackSelection = 1
-seq.cfg.theme         = "renoise"
-seq.cfg.renameSplit   = 1
+seq.cfg.theme          = "renoise"
+seq.cfg.renameSplit    = 1
+seq.cfg.largeScrollFwd = 4
+seq.cfg.largeScrollBwd = 4
 
 seq.advance       = 1
 seq.cfg.zoom      = 1
@@ -2349,7 +2352,11 @@ function seq:processMouseActions()
   if ( gfx.mouse_wheel ~= 0 ) then
     local scFactor = 1
     if ( ( gfx.mouse_cap & 8 ) == 0 ) then
-      scFactor = self.cfg.largeScroll
+      if ( gfx.mouse_wheel < 0 ) then
+        scFactor = self.cfg.largeScrollFwd
+      else
+        scFactor = self.cfg.largeScrollBwd
+      end
     end
   
     self.ypos = self.ypos - scFactor * math.floor( gfx.mouse_wheel / 120 )
