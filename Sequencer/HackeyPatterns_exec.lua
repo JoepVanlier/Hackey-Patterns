@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.32
+@version 0.33
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.33 (2018-10-16)
+   + Fix OFF visibility under cursor issue.
  * v0.32 (2018-10-16)
    + Start pattern indexing at 0.
  * v0.31 (2018-10-16)
@@ -122,7 +124,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.32 (BETA)"
+scriptName = "Hackey Patterns v0.33 (BETA)"
 postMusic = 50000
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -1469,7 +1471,7 @@ function seq:updateGUI()
       gfx.set( table.unpack( colors.linecolor3 ) )
       gfx.rect( xOrigin + fw * ( 1 + xrel ) + 1, xOrigin + ( 2 + yrel ) * fh, fw - 1, fh )
       local curElement = patterns[self.xpos][self.ypos]
-      if ( curElement and curElement > 0 ) then
+      if ( curElement and curElement >= 0 ) then
         if ( self.renaming == 1 ) then
           gfx.set( table.unpack( colors.changed ) )
         else
