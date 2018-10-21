@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.33
+@version 0.34
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.34 (2018-10-16)
+   + Push OFF slight further to right.
  * v0.33 (2018-10-16)
    + Fix OFF visibility under cursor issue.
  * v0.32 (2018-10-16)
@@ -124,7 +126,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.33 (BETA)"
+scriptName = "Hackey Patterns v0.34 (BETA)"
 postMusic = 50000
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -164,7 +166,7 @@ seq.advance       = 1
 seq.cfg.zoom      = 1
 seq.eps           = 0.000001
 
-seq.offSymbol     =  "         OFF"
+seq.offSymbol     =  "          OFF"
 --seq.offSymbol     =  "OFF"
 
 seq.cp = {}
