@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.36
+@version 0.37
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,10 @@
 
 --[[
  * Changelog:
+ * v0.37 (2018-10-17)
+   + Fix incorrect drag behaviour when scrolled away from 0,0.
+   + Copy/Cut/Paste behaviour.
+   + Major bugfix in automation copy mechanism (used to be able to copy wrong items due to resorting).
  * v0.36 (2018-10-17)
    + Also deal with pcm based media items.
  * v0.35 (2018-10-21)
@@ -130,7 +134,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.36 (BETA)"
+scriptName = "Hackey Patterns v0.37 (BETA)"
 postMusic = 50000
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -933,7 +937,8 @@ function seq:copyUnknownToPool()
         envPositions[trackEnv] = {}
         for i=0,reaper.CountAutomationItems(trackEnv)-1 do
           local d_pos = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POSITION", 0, false)
-          envPositions[trackEnv][d_pos] = i
+          local poolidx = reaper.GetSetAutomationItemInfo(trackEnv, i, "D_POOL_ID", 0, false)
+          envPositions[trackEnv][d_pos] = {i, poolidx}
         end
       end
     end
@@ -958,7 +963,7 @@ function seq:copyUnknownToPool()
                 -- Found one that has automation! Copy it now!
                 local poolidx = reaper.GetSetAutomationItemInfo(trackEnv, autoidx, "D_POOL_ID", 0, false)
                 reaper.InsertAutomationItem(trackEnv, poolidx, loc, len)
-                envPositions[trackEnv][loc] = autoidx
+                envPositions[trackEnv][loc] = {autoidx, poolidx}
                 foundOne = 1
                 break;
               end              
@@ -967,7 +972,8 @@ function seq:copyUnknownToPool()
           if ( foundOne == 0 ) then
             -- If we get to the end, just make a new one.
             local autoidx = reaper.InsertAutomationItem(trackEnv, -1, loc, len)
-            envPositions[trackEnv][loc] = autoidx
+            local poolidx = reaper.GetSetAutomationItemInfo(trackEnv, autoidx, "D_POOL_ID", 0, false)
+            envPositions[trackEnv][loc] = {autoidx, poolidx}
           end
         end
       end
@@ -980,7 +986,7 @@ function seq:copyUnknownToPool()
       local cTrack = v[2]
       for envIdx = 0,reaper.CountTrackEnvelopes(cTrack)-1 do
         local trackEnv = reaper.GetTrackEnvelope(cTrack, envIdx)
-        
+
         -- No automation here (copy from the pool!)
         if ( not envPositions[trackEnv][loc] ) then
           local poolItem = poolGUIDs[v[4]]
@@ -988,8 +994,7 @@ function seq:copyUnknownToPool()
           if ( poolItem ) then
             autoidx = envPositions[trackEnv][reaper.GetMediaItemInfo_Value(poolItem[1], "D_POSITION")]
             if ( autoidx ) then
-              local poolIdx = reaper.GetSetAutomationItemInfo(trackEnv, autoidx, "D_POOL_ID", 0, false)
-              reaper.InsertAutomationItem(trackEnv, poolIdx, loc, len)
+              reaper.InsertAutomationItem(trackEnv, autoidx[2], loc, len)
             end
           end
         end
@@ -2410,9 +2415,10 @@ function seq:processMouseActions()
           if ( (ctime - self.lastLeftTime) < doubleClickInterval ) then
             self:startHT(self.xpos, self.ypos)
           end
+          seq:dragBlock(Inew-1, Jnew-2)
         else
           -- Change selection if it wasn't the initial click
-          seq:dragBlock(Inew+fov.scrollx-1, Jnew+fov.scrolly-2)
+          seq:dragBlock(Inew-1, Jnew-2)
         end
       end
     else
@@ -2517,8 +2523,214 @@ function seq:swapTheme()
    self:loadColors( self.cfg.theme )
 end
 
-local function updateLoop()
+function seq:selectBlock(cp)
+  local cp = cp or self.cp
+  local trackToIndex = self.trackToIndex
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local eps = self.eps
+  local trackToIndex = self.trackToIndex     
+      
+  reaper.Main_OnCommand(40769, 0) -- Deselect all items
+  
+  local minDist = 100000000
+  
+  -- Select media items
+  local ystart = cp.ystart * rps - eps
+  local ystop = cp.ystop * rps + eps
+  for i=0,reaper.CountMediaItems() - 1 do
+    local mItem = reaper.GetMediaItem(0, i)
+    local cTrack = reaper.GetMediaItem_Track(mItem);
+    if ( trackToIndex[cTrack] >= cp.xstart ) and ( trackToIndex[cTrack] <= cp.xstop ) then
+      loc = reaper.GetMediaItemInfo_Value( mItem, "D_POSITION" );
+      if ( loc >= ystart and loc <= ystop ) then
+      
+        -- Keep track of the minimal distance to the item.
+        local cDist = loc - ystart
+        if ( cDist < minDist ) then
+          minDist = cDist
+        end
+        reaper.SetMediaItemInfo_Value( mItem, "B_UISEL", 1 )
+      end
+    end
+  end
 
+  -- Select automation items
+  for i=cp.xstart,cp.xstop do
+    local cTrack = reaper.GetTrack(0, i)
+    if ( cTrack ) then
+      for j=0,reaper.CountTrackEnvelopes(cTrack)-1 do
+        local cEnv = reaper.GetTrackEnvelope(cTrack, j)
+        for k=0,reaper.CountAutomationItems(cEnv)-1 do
+          local loc = reaper.GetSetAutomationItemInfo(cEnv, k, "D_POSITION", 0, false);
+          if ( loc >= ystart and loc <= ystop ) then
+            reaper.GetSetAutomationItemInfo(cEnv, k, "D_UISEL", 1, true);
+          end
+        end
+      end
+    end
+  end
+  
+  return minDist
+end
+
+function seq:mendMultiple(xstart, xstop, row)
+  if ( row > 0 ) then
+    for j=xstart,xstop do
+      seq:mend(j, row)
+    end
+  end
+end
+
+function seq:storeCopiedBlock(minDist)
+  local cp = self.cp
+  cpsize = {}
+  cpsize.minDist = minDist
+  cpsize.xsize  = (cp.xstop - cp.xstart)
+  cpsize.ysize  = (cp.ystop - cp.ystart)
+  self.cpsize   = cpsize
+  
+  trackGUIDs = {}
+  local c = 1
+  for i=cp.xstart,cp.xstop do
+    local track = reaper.GetTrack(0, i)
+    if ( track ) then
+      trackGUIDs[c] = reaper.GetTrackGUID(track)
+      c = c + 1
+    end
+  end
+  self.trackGUIDs = trackGUIDs
+end
+
+function seq:verifyTrackLayout()
+  local trackGUIDs = self.trackGUIDs
+  if ( not trackGUIDs ) then
+    return 0
+  end
+  
+  local xs = self.xpos
+  for i=1,#trackGUIDs do
+    local trk = reaper.GetTrack(0, xs)
+    if ( trk ) then
+      local GUID = reaper.GetTrackGUID( trk )
+      if ( trackGUIDs[i] ~= GUID ) then
+        return 0
+      end
+      xs = xs + 1
+    else
+      return 0
+    end
+  end
+  
+  return 1
+end
+
+function seq:copyBlock()
+  local cp = self.cp
+  if ( cp.xstart ) then
+    reaper.Undo_BeginBlock()
+    seq:pushPosition()
+    reaper.MarkProjectDirty(0)  
+    local minDist = self:selectBlock()
+    reaper.Main_OnCommand(40057, 0) -- Copy Items
+    seq:popPosition()
+    self:storeCopiedBlock(minDist)
+    reaper.Undo_EndBlock("Sequencer: Copy Block", 0)    
+  end
+end
+
+function seq:cutBlock()
+  local cp = self.cp
+  if ( cp.xstart ) then
+    reaper.Undo_BeginBlock()
+    seq:pushPosition()
+    reaper.MarkProjectDirty(0)
+    local minDist = self:selectBlock()
+    reaper.Main_OnCommand(40059, 0) -- Cut Items
+    seq:updateData()
+    self:mendMultiple(cp.xstart, cp.xstop, cp.ystart)
+    self:mendMultiple(cp.xstart, cp.xstop, cp.ystop)
+    seq:popPosition()
+    seq:updateData() 
+    self:storeCopiedBlock(minDist)   
+    reaper.Undo_EndBlock("Sequencer: Cut Block", 0)
+  end
+end
+
+function seq:deleteBlock()
+  local cp = self.cp
+  if ( cp.xstart ) then
+    reaper.Undo_BeginBlock()
+    seq:pushPosition()
+    reaper.MarkProjectDirty(0)
+    self:selectBlock()
+    reaper.Main_OnCommand(40006, 0) -- Delete Items
+    seq:updateData()
+    self:mendMultiple(cp.xstart, cp.xstop, cp.ystart)
+    self:mendMultiple(cp.xstart, cp.xstop, cp.ystop)
+    seq:popPosition()
+    seq:updateData() 
+    reaper.Undo_EndBlock("Sequencer: Delete Block", 0)
+  end
+end
+
+-- Fix the sizes of the automation objects in the selection
+function seq:correctSizeAutomationSelection()
+  local sizeData = {}
+  for i=0,reaper.CountMediaItems()-1 do
+    local mItem = reaper.GetMediaItem(0, i)
+    local selected = reaper.GetMediaItemInfo_Value( mItem, "B_UISEL" )
+    if ( selected == 1 ) then
+      local loc = reaper.GetMediaItemInfo_Value( mItem, "D_POSITION" )
+      local len = reaper.GetMediaItemInfo_Value( mItem, "D_LENGTH" )
+      sizeData[loc] = len
+    end
+  end
+  
+  for i=0,reaper.CountTracks(0)-1 do
+    local cTrack = reaper.GetTrack(0, i)
+    if ( cTrack ) then
+      for j=0,reaper.CountTrackEnvelopes(cTrack)-1 do
+        local cEnv = reaper.GetTrackEnvelope(cTrack, j)
+        for k=0,reaper.CountAutomationItems(cEnv)-1 do
+          local selected = reaper.GetSetAutomationItemInfo(cEnv, k, "D_UISEL", 0, false);
+          if ( selected > 0 ) then
+            local loc = reaper.GetSetAutomationItemInfo(cEnv, k, "D_POSITION", 0, false);
+            if ( sizeData[loc] ) then
+              reaper.GetSetAutomationItemInfo(cEnv, k, "D_LENGTH", sizeData[loc], true);
+            end
+          end
+        end
+      end
+    end 
+  end
+end
+
+function seq:pasteBlock()
+  local cpsize = self.cpsize
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * seq.cfg.zoom
+  if ( cpsize and cpsize.xsize ) then
+    if ( seq:verifyTrackLayout() == 1 ) then
+      reaper.Undo_BeginBlock()  
+      seq:pushPosition()
+      reaper.MarkProjectDirty(0)
+      self:selectBlock({xstart=self.xpos, xstop=self.xpos+cpsize.xsize, ystart=self.ypos, ystop=self.ypos+cpsize.ysize})
+      reaper.Main_OnCommand(40006, 0) -- Delete Items
+      reaper.Main_OnCommand(40769, 0) -- Deselect all items
+      reaper.SetEditCurPos2(0, self.ypos * rps + cpsize.minDist, false, false)
+      reaper.SetOnlyTrackSelected(reaper.GetTrack(0, self.xpos))
+      reaper.Main_OnCommand(40914,0)  -- Set as last touched track
+      reaper.Main_OnCommand(41072, 0) -- Paste items 
+      seq:updateData() 
+      self:mendMultiple(self.xpos, self.xpos + cpsize.xsize, self.ypos-1)
+      self:mendMultiple(self.xpos, self.xpos + cpsize.xsize, self.ypos + cpsize.ysize ) -- Potential issues here
+      seq:popPosition()
+      seq:updateData()
+      reaper.Undo_EndBlock("Sequencer: Paste Block", 0)
+    end
+  end
+end
+
+local function updateLoop()
   if ( not reaper.GetTrack(0,0) ) then
     reaper.ShowMessageBox("Error: This project has no tracks.", "Error", 0)
     gfx.quit()
@@ -2728,6 +2940,14 @@ local function updateLoop()
         seq.cfg.zoom = seq.cfg.zoom / 2
       elseif ( inputs('panic') ) then
         reaper.Main_OnCommand(40345, 0)
+      elseif ( inputs('copyBlock') ) then
+        seq:copyBlock()
+      elseif ( inputs('pasteBlock') ) then
+        seq:pasteBlock()
+      elseif ( inputs('cutBlock') ) then
+        seq:cutBlock()                
+      elseif ( inputs('deleteBlock') ) then
+        seq:deleteBlock()      
       else
         seq.change = 0
       end
@@ -2778,7 +2998,7 @@ local function updateLoop()
         local rps = reaper.TimeMap2_QNToTime(0, 1) * seq.cfg.zoom
         reaper.SetEditCurPos2(0, seq.ypos * rps, false, false)
       end
-    end
+    end  
   
     if ( seq.cfg.followTrackSelection == 1 ) then
       if ( seq.xpos ~= seq.lastx ) then
