@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="6ba71f4eeb471873e95d73d256786fb37d1de46d">
+<index version="1" name="Hackey Sequencer" commit="47aa3f863762158bccd7fc378ec3d006cb1908c6">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -169,6 +169,12 @@
       <version name="0.36" author=": Joep Vanlier" time="2018-11-01T02:10:23Z">
         <changelog><![CDATA[+ Also deal with pcm based media items.]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/6ba71f4eeb471873e95d73d256786fb37d1de46d/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.37" author=": Joep Vanlier" time="2018-11-01T23:53:17Z">
+        <changelog><![CDATA[+ Fix incorrect drag behaviour when scrolled away from 0,0.
++ Copy/Cut/Paste behaviour.
++ Major bugfix in automation copy mechanism (used to be able to copy wrong items due to resorting).]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/47aa3f863762158bccd7fc378ec3d006cb1908c6/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
