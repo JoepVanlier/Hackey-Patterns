@@ -20,7 +20,7 @@
 
 --[[
  * Changelog:
- * v0.37 (2018-10-17)
+ * v0.37 (2018-11-02)
    + Fix incorrect drag behaviour when scrolled away from 0,0.
    + Copy/Cut/Paste behaviour.
    + Major bugfix in automation copy mechanism (used to be able to copy wrong items due to resorting).
