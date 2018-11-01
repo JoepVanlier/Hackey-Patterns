@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="9f684397754c89c5ea55f86148985948732d7818">
+<index version="1" name="Hackey Sequencer" commit="6ba71f4eeb471873e95d73d256786fb37d1de46d">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -165,6 +165,10 @@
       <version name="0.35" author=": Joep Vanlier" time="2018-10-21T21:37:48Z">
         <changelog><![CDATA[+ Added option in cfg file for asymmetric scrolling.]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/9f684397754c89c5ea55f86148985948732d7818/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.36" author=": Joep Vanlier" time="2018-11-01T02:10:23Z">
+        <changelog><![CDATA[+ Also deal with pcm based media items.]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/6ba71f4eeb471873e95d73d256786fb37d1de46d/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
