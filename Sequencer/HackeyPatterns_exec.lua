@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.35
+@version 0.36
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.36 (2018-10-17)
+   + Also deal with pcm based media items.
  * v0.35 (2018-10-21)
    + Added option in cfg file for asymmetric scrolling.
  * v0.34 (2018-10-16)
@@ -128,7 +130,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.35 (BETA)"
+scriptName = "Hackey Patterns v0.36 (BETA)"
 postMusic = 50000
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
@@ -808,6 +810,18 @@ function seq:testWillBeUnique()
   
 end
 
+function seq:getTakeGUID(take)
+  if ( reaper.TakeIsMIDI(take) ) then
+    retval, GUID = reaper.BR_GetMidiTakePoolGUID(take)
+  else
+    local src = reaper.GetMediaItemTake_Source(take)
+    src       = reaper.GetMediaSourceParent(src) or src
+    fn        = reaper.GetMediaSourceFileName(src, "")
+    GUID      = fn;
+  end
+  return GUID
+end
+
 -- Find all MIDI items
 function seq:fetchPatterns()
   local reaper      = reaper
@@ -825,9 +839,9 @@ function seq:fetchPatterns()
     local track = reaper.GetMediaItem_Track(mediaItem)
     local take = reaper.GetActiveTake(mediaItem)
     
-    -- Is it a midi take?
-    if ( reaper.TakeIsMIDI(take) ) then
-      local retval, GUID    = reaper.BR_GetMidiTakePoolGUID(take)
+    if ( take ) then
+      -- Is it a midi take?
+      local GUID = self:getTakeGUID(take)
       local name = reaper.GetTakeName(take)
       local loc = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
       if ( loc >= postMusic ) then
@@ -2095,11 +2109,11 @@ function seq:updateMidiName(inGUID, name)
   for i=0,reaper.CountMediaItems(0)-1 do
     local mediaItem = reaper.GetMediaItem(0, i)
     local take = reaper.GetActiveTake(mediaItem)
-    if ( reaper.TakeIsMIDI(take) ) then
-      local retval, GUID = reaper.BR_GetMidiTakePoolGUID(take)
-      if ( inGUID == GUID ) then
-        reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", name, true)
-      end
+    --if ( reaper.TakeIsMIDI(take) ) then
+    -- local retval, GUID = reaper.BR_GetMidiTakePoolGUID(take)
+    local GUID = self:getTakeGUID(take)
+    if ( inGUID == GUID ) then
+      reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", name, true)
     end
   end
 end
@@ -2148,7 +2162,7 @@ end
 
 function seq:rename(track, row)
   -- Media items
-  local name, GUID
+  local name, GUID, retval
   local cTrack = reaper.GetTrack(0, track)
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local eps = self.eps
@@ -2161,11 +2175,12 @@ function seq:rename(track, row)
       if ( d_pos < postMusic ) then
         if ( math.floor( d_pos / rps + eps ) == row ) then
           local take = reaper.GetActiveTake(mediaItem)
-          if ( reaper.TakeIsMIDI(take) ) then
-            local retval
-            retval, GUID = reaper.BR_GetMidiTakePoolGUID(take)
-            retval, name = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
-          end
+          --if ( reaper.TakeIsMIDI(take) ) then
+          --  local retval
+          --  retval, GUID = reaper.BR_GetMidiTakePoolGUID(take)
+          GUID = self:getTakeGUID(take)
+          retval, name = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
+          --end
         end
       end
     end
