@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="70b8e921508d16211c157d8f96278caa1e46e6ed">
+<index version="1" name="Hackey Sequencer" commit="36ec88063942fab725518a5967c659c2b0c01a12">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -190,6 +190,14 @@
 + Click left bar to set play position.
 + Fix order problem with insert.]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/70b8e921508d16211c157d8f96278caa1e46e6ed/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.40" author=": Joep Vanlier" time="2018-11-03T22:38:13Z">
+        <changelog><![CDATA[+ Switch alt + doubleclick to ctrl+doubleclick on Linux.
++ Parse colors using colorFromNative.
++ Added horizontal scrollbar when nTracks > FOV.
++ Fix mapping solo.
++ Force cursor in range when number of columns change.]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/36ec88063942fab725518a5967c659c2b0c01a12/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
