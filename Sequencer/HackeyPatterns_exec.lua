@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.37
+@version 0.38
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,10 @@
 
 --[[
  * Changelog:
+ * v0.38 (2018-11-03)
+   + Fixed crash bug that attempted to display columns past end.
+   + Added alt + doubleclick to open MIDI with normal piano roll.
+   + Added track colors (where available).
  * v0.37 (2018-11-02)
    + Fix incorrect drag behaviour when scrolled away from 0,0.
    + Copy/Cut/Paste behaviour.
@@ -134,8 +138,9 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.37 (BETA)"
+scriptName = "Hackey Patterns v0.38 (BETA)"
 postMusic = 50000
+midiCMD = 40153
 
 hackeyTrackey = "Tracker tools/Tracker/tracker.lua"
 
@@ -1213,6 +1218,7 @@ function seq:fetchTracks()
   local reaper        = reaper
   local trackToIndex  = {}
   local trackTitles   = {}
+  local trackColors   = {}
   local cellw         = self.cellw
   local colors        = self.colors
   local nTracks       = self.max_xpos
@@ -1227,10 +1233,19 @@ function seq:fetchTracks()
       trackTitles[i] = fitStr( str, cellw )  
     end
     trackToIndex[trk] = i
+    
+    local col = reaper.GetTrackColor(trk)
+    if ( col > 0 ) then
+      local r = math.floor((col % 2^24) / 2^16) / 255
+      local g = math.floor((col % 2^16) / 2^8) / 255
+      local b = col % 2^8 / 255
+      trackColors[i] = {r, g, b, 1.0}
+    end
   end
   
   self.trackToIndex = trackToIndex
-  self.trackTitles  = trackTitles  
+  self.trackTitles  = trackTitles
+  self.trackColors  = trackColors  
 end
 
 function seq:populateSequencer()
@@ -1322,6 +1337,7 @@ function seq:updateGUI()
   local patterns      = self.patterns
   local highlight     = self.highlight
   local trackTitles   = self.trackTitles
+  local trackColors   = self.trackColors
   local fov           = self.fov
   
   local xrel          = self.xpos - fov.scrollx
@@ -1342,11 +1358,10 @@ function seq:updateGUI()
   local yOrigin       = 0
    
   gfx.setfont(1, colors.patternFont, colors.patternFontSize)
-  
   local xStart = 0
   local xEnd = fov.width
-  if ( xEnd > nTracks-1 ) then
-    xEnd = nTracks-1
+  if ( (xEnd + scrollx) > nTracks-1 ) then
+    xEnd = nTracks-fov.scrollx-1
   end
 
   ---------------------------------
@@ -1360,11 +1375,17 @@ function seq:updateGUI()
     local offs = .5*gfx.measurestr(trackTitles[ix+scrollx])
     gfx.x = xl + .5*fw - offs
     gfx.y = yOrigin
+
+    if ( trackColors[ix+scrollx] ) then
+      gfx.set( table.unpack( trackColors[ix+scrollx] ) )
+      gfx.rect( xl, yOrigin, fw, fh )
+    end
+    
     if ( self.renaming == 2 and ix+scrollx == self.renameTrackIdx ) then
       gfx.set( table.unpack( colors.changed ) )
     else
-      gfx.set( table.unpack( colors.textcolor ) )          
-    end
+      gfx.set( table.unpack( colors.textcolor ) )
+    end    
     gfx.printf( "%s", trackTitles[ix+scrollx] )
     gfx.set( table.unpack( colors.textcolor ) )
         
@@ -1671,6 +1692,10 @@ end
 function seq:computeSize()
   self.fov.width = math.floor( ( gfx.w - self.cfg.nameSize - .99 * self.cellw ) / self.cellw ) - 1
   self.fov.height = math.floor( gfx.h / self.cellh ) - 3
+  
+  if ( (self.fov.width + self.fov.scrollx) >= reaper.CountTracks() ) then
+    self.fov.scrollx = math.max( 0, reaper.CountTracks() - self.fov.width - 1 )
+  end
   
   self.max_xpos = reaper.CountTracks(0) --self.fov.width
   self.max_ypos = 4096
@@ -2413,7 +2438,16 @@ function seq:processMouseActions()
           
           local doubleClickInterval = 0.2
           if ( (ctime - self.lastLeftTime) < doubleClickInterval ) then
-            self:startHT(self.xpos, self.ypos)
+            if ( gfx.mouse_cap & 16 ==  0 ) then
+              self:startHT(self.xpos, self.ypos)
+            else
+              reaper.Main_OnCommand(40769, 0) -- Deselect all items
+              local itemData = seq:findMIDI(self.xpos, self.ypos)
+              if ( itemData ) then
+                reaper.SetMediaItemInfo_Value(itemData[1], "B_UISEL", 1)
+                reaper.Main_OnCommand(midiCMD, 0) -- Deselect all items
+              end
+            end
           end
           seq:dragBlock(Inew-1, Jnew-2)
         else
