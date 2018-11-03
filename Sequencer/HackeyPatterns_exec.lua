@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.39
+@version 0.40
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,12 @@
 
 --[[
  * Changelog:
+ * v0.40 (2018-11-03)
+   + Switch alt + doubleclick to ctrl+doubleclick on Linux.
+   + Parse colors using colorFromNative.
+   + Added horizontal scrollbar when nTracks > FOV.
+   + Fix mapping solo.
+   + Force cursor in range when number of columns change.
  * v0.39 (2018-11-03)
    + Bugfix automation copy mechanism.
    + Bugfix regarding extremely long items.
@@ -145,7 +151,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.39 (BETA)"
+scriptName = "Hackey Patterns v0.40 (BETA)"
 postMusic = 50000
 midiCMD = 40153
 
@@ -182,6 +188,7 @@ seq.cfg.theme          = "renoise"
 seq.cfg.renameSplit    = 1
 seq.cfg.largeScrollFwd = 4
 seq.cfg.largeScrollBwd = 4
+seq.cfg.isLinux        = 0
 
 seq.advance       = 1
 seq.cfg.zoom      = 1
@@ -485,7 +492,6 @@ function seq:loadColors(colorScheme)
     self.colors.bar.fx2          = self.colors.normal.fx1   
     self.colors.bar.end1         = {136/255, 80/255, 178/255, 1.0}
     self.colors.bar.end2         = self.colors.bar.end1
-    
     
     self.colors.customFontDisplace  = { 8, -3 }
   end
@@ -1292,10 +1298,8 @@ function seq:fetchTracks()
       
       local col = reaper.GetTrackColor(trk)
       if ( col > 0 ) then
-        local r = math.floor((col % 2^24) / 2^16) / 255
-        local g = math.floor((col % 2^16) / 2^8) / 255
-        local b = col % 2^8 / 255
-        trackColors[j] = {r, g, b, 1.0}
+        local r, g, b = reaper.ColorFromNative(col)
+        trackColors[j] = {r/300, g/300, b/300, 1.0}
       end
       j = j + 1
     end
@@ -1380,6 +1384,7 @@ function seq:_updateData()
   seq:copyUnknownToPool()
   seq:buildPatternList()
   seq:populateSequencer()
+  seq:forceCursorInRange()
 end
 
 function seq:updateData()
@@ -1436,7 +1441,7 @@ function seq:updateGUI()
   local ms = .5*gfx.measurestr("S")  
   for ix=xStart,xEnd do
     local xl = xOrigin + fw*(ix+1)
-    local cTrack = reaper.GetTrack( 0, ix+scrollx )
+    local cTrack = reaper.GetTrack( 0, self:visibilityTrafo( ix+scrollx ) )
     local offs = .5*gfx.measurestr(trackTitles[ix+scrollx])
     gfx.x = xl + .5*fw - offs
     gfx.y = yOrigin
@@ -1709,6 +1714,15 @@ function seq:updateGUI()
   if ( ( lEnd >= 0 ) and ( lEnd <= height ) ) then
     gfx.set(table.unpack(colors.loopcolor))
     gfx.rect(xOrigin + fw + 1, yOrigin + 2 * fh + fh * lEnd, tw, 1)
+  end
+
+  if ( self.nVisibleTracks > self.fov.width ) then
+    gfx.set(table.unpack(colors.scrollbar1))
+    gfx.rect(x, y, w, h)
+    gfx.set(table.unpack(colors.loopcolor))
+    gfx.rect(fw, gfx.h - fh, (self.fov.width+1)*fw, fh)
+    gfx.set(table.unpack(colors.scrollbar2))
+    gfx.rect(fw + (fw*scrollx*self.fov.width/(self.nVisibleTracks-self.fov.width-1)) + 1, gfx.h - fh + 1, fw-2, fh-2)    
   end
 end
 
@@ -2342,16 +2356,19 @@ local function mouseStatus()
 end
 
 function seq:toggleMute(trackidx)
-  local cTrack = reaper.GetTrack( 0, trackidx )
-  local mute = reaper.GetMediaTrackInfo_Value(cTrack, "B_MUTE")
-  if ( mute == 1 ) then
-    reaper.SetMediaTrackInfo_Value( cTrack, "B_MUTE", 0 )
-  else
-    reaper.SetMediaTrackInfo_Value( cTrack, "B_MUTE", 1 )
-     
-    -- If it was solo, un-solo!
-    if ( reaper.GetMediaTrackInfo_Value( cTrack, "I_SOLO" ) > 0 ) then
-      reaper.SetMediaTrackInfo_Value( cTrack, "I_SOLO", 0 )
+  local trackidx = self:visibilityTrafo( trackidx )
+  if ( trackidx ) then
+    local cTrack = reaper.GetTrack( 0, trackidx )
+    local mute = reaper.GetMediaTrackInfo_Value(cTrack, "B_MUTE")
+    if ( mute == 1 ) then
+      reaper.SetMediaTrackInfo_Value( cTrack, "B_MUTE", 0 )
+    else
+      reaper.SetMediaTrackInfo_Value( cTrack, "B_MUTE", 1 )
+       
+      -- If it was solo, un-solo!
+      if ( reaper.GetMediaTrackInfo_Value( cTrack, "I_SOLO" ) > 0 ) then
+        reaper.SetMediaTrackInfo_Value( cTrack, "I_SOLO", 0 )
+      end
     end
   end
 end
@@ -2369,15 +2386,18 @@ function seq:PopUIBlock()
   end
 end
 
-function seq:toggleSolo(trackidx)
-  local cTrack = reaper.GetTrack( 0, trackidx )
-  local wasSolo = reaper.GetMediaTrackInfo_Value( cTrack, "I_SOLO" ) > 0;
-  if ( wasSolo ) then
-    reaper.SetMediaTrackInfo_Value( cTrack, "I_SOLO", 0 )
-  else
-    -- If solo'd, make sure it is not muted
-    reaper.SetMediaTrackInfo_Value( cTrack, "B_MUTE", 0 )
-    reaper.SetMediaTrackInfo_Value( cTrack, "I_SOLO", 1 )
+function seq:toggleSolo(xpos)
+  local trackidx = seq:visibilityTrafo(xpos)
+  if ( trackidx ) then
+    local cTrack = reaper.GetTrack( 0, trackidx )
+    local wasSolo = reaper.GetMediaTrackInfo_Value( cTrack, "I_SOLO" ) > 0;
+    if ( wasSolo ) then
+      reaper.SetMediaTrackInfo_Value( cTrack, "I_SOLO", 0 )
+    else
+      -- If solo'd, make sure it is not muted
+      reaper.SetMediaTrackInfo_Value( cTrack, "B_MUTE", 0 )
+      reaper.SetMediaTrackInfo_Value( cTrack, "I_SOLO", 1 )
+    end
   end
 end
 
@@ -2518,6 +2538,16 @@ function seq:processMouseActions()
           self:toggleSolo(scrollx + cTrack-1)
         end
       end
+    elseif ( self.scrolldrag or ( self.nVisibleTracks > self.fov.width and gfx.mouse_y > (gfx.h - fh) and ( gfx.mouse_x > fw ) and (gfx.mouse_x < fw * (self.fov.width + 2)) ) ) then       
+      local scrollx = math.floor((gfx.mouse_x - fw)*(self.nVisibleTracks-self.fov.width-1)/(fw*self.fov.width))
+      self.scrolldrag = 1
+      if ( scrollx < 0 ) then
+        scrollx = 0
+      end
+      if ( scrollx > self.nVisibleTracks-self.fov.width-1 ) then
+        scrollx = self.nVisibleTracks-self.fov.width-1
+      end
+      self.fov.scrollx = scrollx
     elseif ( gfx.mouse_x < fw ) then
       --reaper.SetEditCurPos2(0, ( math.floor(gfx.mouse_y / fh) - 2 ) * rps, true, false)
       self:BlockUIRefresh()
@@ -2537,10 +2567,11 @@ function seq:processMouseActions()
           self.xpos = Inew - 1
           self.ypos = Jnew - 2
           self:forceCursorInRange()
+          self.dragging = 1
           
           local doubleClickInterval = 0.2
           if ( (ctime - self.lastLeftTime) < doubleClickInterval ) then
-            if ( gfx.mouse_cap & 16 ==  0 ) then
+            if ( gfx.mouse_cap & OPENMIDICAP ==  0 ) then
               self:startHT(self:visibilityTrafo(self.xpos), self.ypos)
             else
               reaper.Main_OnCommand(40769, 0) -- Deselect all items
@@ -2554,7 +2585,9 @@ function seq:processMouseActions()
           seq:dragBlock(Inew-1, Jnew-2)
         else
           -- Change selection if it wasn't the initial click
-          seq:dragBlock(Inew-1, Jnew-2)
+          if ( self.dragging ) then
+            seq:dragBlock(Inew-1, Jnew-2)
+          end
         end
       end
     else
@@ -2583,6 +2616,8 @@ function seq:processMouseActions()
     self.lastLeft = 1
     self.lastLeftTime = reaper.time_precise()
   else
+    self.scrolldrag = nil
+    self.dragging = nil
     self.lastLeft = 0
   end
   
@@ -2814,7 +2849,7 @@ function seq:deleteBlock()
 end
 
 -- Fix the sizes of the automation objects in the selection
-function seq:correctSizeAutomationSelection()
+--[[function seq:correctSizeAutomationSelection()
   local sizeData = {}
   for i=0,reaper.CountMediaItems()-1 do
     local mItem = reaper.GetMediaItem(0, i)
@@ -2843,7 +2878,7 @@ function seq:correctSizeAutomationSelection()
       end
     end 
   end
-end
+end]]--
 
 function seq:pasteBlock()
   local cpsize = self.cpsize
@@ -3182,7 +3217,10 @@ local function updateLoop()
         for i=0,reaper.CountTracks()-1 do
           reaper.SetTrackSelected(reaper.GetTrack(0,i), false)
         end
-        reaper.SetTrackSelected(reaper.GetTrack(0,seq.xpos), true)
+        local trkidx = seq:visibilityTrafo(seq.xpos)
+        if ( trkidx ) then
+          reaper.SetTrackSelected(reaper.GetTrack(0, trkidx), true)
+        end
         
         for i=0,reaper.CountTracks()-1 do
           reaper.CSurf_OnArrow(0, false)
@@ -3229,6 +3267,11 @@ local function Main()
   
 --  seq:loadColors("renoise")
   seq.cfg = seq:loadConfig("seq.cfg", seq.cfg)
+  if ( seq.cfg.isLinux == 1 ) then
+    OPENMIDICAP = 4
+  else
+    OPENMIDICAP = 16
+  end
   seq:loadColors( seq.cfg.theme )
   
   --{"default", "buzz", "it", "hacker", "renoise"}
