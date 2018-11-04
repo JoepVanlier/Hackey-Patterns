@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.40
+@version 0.41
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,9 @@
 
 --[[
  * Changelog:
+ * v0.41 (2018-11-04)
+   + Improve sizing row indicator.
+   + Add help file.
  * v0.40 (2018-11-03)
    + Switch alt + doubleclick to ctrl+doubleclick on Linux.
    + Parse colors using colorFromNative.
@@ -319,8 +322,8 @@ function seq:loadKeys( keySet )
     keys.off2           = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned    
     keys.renoiseplay    = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
 
-    keys.zoomin         = { 0,    0,  0,    43 }            -- +
-    keys.zoomout        = { 0,    0,  0,    45 }            -- -
+    keys.zoomin         = { 0,    0,  1,    45 }            -- +
+    keys.zoomout        = { 0,    0,  1,    43 }            -- -
     
     keys.shiftpgdn      = { 0,    0,  1,    1885824110 }    -- Shift + PgDn
     keys.shiftpgup      = { 0,    0,  1,    1885828464 }    -- Shift + PgUp
@@ -328,31 +331,59 @@ function seq:loadKeys( keySet )
     keys.shiftend       = { 0,    0,  1,    6647396 }       -- Shift + End
     
     help = {
-      { 'Shift + Note', 'Advance column after entry' },
-      { 'Insert/Backspace/-', 'Insert/Remove/Note OFF' },   
+      { 'Insert/Backspace/-', 'Insert/Remove/OFF' },   
       { 'CTRL + Insert/Backspace', 'Insert Row/Remove Row' },
       { 'Del/.', 'Delete' }, 
-      { 'Space/Return', 'Play/Play From' },
-      { 'CTRL + L', 'Loop pattern' },
+      { 'Space', 'Play' },
+      { 'Enter / Doubleclick', 'Open Hackey Trackey on pattern' },      
+      { 'Alt + Doubleclick', 'Open MIDI editor on pattern' },
+      { 'CTRL + L', 'Loop row' },
       { 'CTRL + Q/W', 'Loop start/end' },
-      { 'Shift + +/-', 'Transpose selection' },
       { 'CTRL + B/E', 'Selection begin/End' },
       { 'SHIFT + Arrow Keys', 'Block selection' },
       { 'CTRL + C/X/V', 'Copy / Cut / Paste' },
       { 'Shift + Del', 'Delete block' },
-      { 'CTRL + (SHIFT) + Z', 'Undo / Redo' }, 
-      { 'F4/F5', '[Adv]ance De/Increase' },
+      { 'CTRL + (SHIFT) + Z', 'Undo / Redo' },
       { 'U', 'Unpool pattern' },
       { 'S', 'Split pattern' },
       { 'F11/F12', 'Switch Theme / Panic' },
-      { 'CTRL + Left/Right', 'Switch MIDI item/track' },   
-      { 'CTRL + Shift + Left/Right', 'Switch Track' },         
-      { 'CTRL + D', 'Duplicate pattern' },
       { 'CTRL + N', 'Rename pattern' },
-      { 'CTRL + R', 'Play notes' },
-      { '+/-', 'Zoom in/out' },
-      { 'CTRL + +/-', 'Advanced col options' },
+      { 'Shift + +/-', 'Zoom in/out' },
+      { 'F11', 'Swap theme' },
+      { 'F12', 'MIDI Panic' },
     }
+  end
+end
+
+function seq:drawHelp()
+  local wcmax = 0
+  local wcmax2 = 0
+  for i,v in pairs(help) do
+    local wc, hc = gfx.measurestr(v[1])
+    local wc2, hc = gfx.measurestr(v[2])
+    if ( wc > wcmax ) then
+      wcmax = wc
+    end
+    if ( wc2 > wcmax2 ) then
+      wcmax2 = wc2
+    end
+  end
+
+  local X = 50
+  local Y = 50
+  local wc, hc = gfx.measurestr("c")
+  gfx.set(0.75, 0.73, 0.75, 0.5)
+  gfx.rect(X-10, Y-10,wcmax+wcmax2+40,hc*#help+20)
+  gfx.rect(X-9, Y-9,wcmax+wcmax2+39,hc*#help+19)
+  gfx.rect(X-8, Y-8,wcmax+wcmax2+38,hc*#help+18)
+  for i,v in pairs(help) do
+    gfx.set(0,0,0,1)
+    local wc, hc = gfx.measurestr(v[1])
+    gfx.x = X + wcmax - wc
+    gfx.y = 10+i*hc+20
+    gfx.drawstr( v[1], 1, 1 )
+    gfx.x = X + wcmax + 20
+    gfx.drawstr( v[2], 1, 1 )    
   end
 end
 
@@ -1600,7 +1631,7 @@ function seq:updateGUI()
   end
   
   gfx.set( table.unpack( colors.selectLight ) )
-  gfx.rect( 0, xOrigin + ( 2 + yrel ) * fh, (fov.width+2)*fw, fh )
+  gfx.rect( 0, xOrigin + ( 2 + yrel ) * fh, (xEnd-xStart+2)*fw, fh )
   gfx.set( table.unpack( colors.textcolor ) )
   
   -- Tick counts
@@ -1723,6 +1754,10 @@ function seq:updateGUI()
     gfx.rect(fw, gfx.h - fh, (self.fov.width+1)*fw, fh)
     gfx.set(table.unpack(colors.scrollbar2))
     gfx.rect(fw + (fw*scrollx*self.fov.width/(self.nVisibleTracks-self.fov.width-1)) + 1, gfx.h - fh + 1, fw-2, fh-2)    
+  end
+  
+  if ( self.renaming == 3 ) then
+    self:drawHelp()
   end
 end
 
@@ -2933,6 +2968,8 @@ local function updateLoop()
     if ( seq.renaming == 0 ) then
       if inputs('hackeytrackey') then
         seq:startHT(seq:visibilityTrafo(seq.xpos), seq.ypos)
+      elseif inputs('help') then
+        seq.renaming = 3
       elseif inputs('theme') then
         seq:swapTheme()
       elseif inputs('left') then
@@ -3201,7 +3238,12 @@ local function updateLoop()
             seq:updateTrackName(seq.renameTrackIdx, seq.trackName)
           end
         end
-      end      
+      end
+    elseif ( seq.renaming == 3 ) then
+      -- Help file open
+      if ( lastChar > 0 ) then
+        seq.renaming = 0;
+      end
     end
   
     if ( seq.cfg.followRow == 1 ) then

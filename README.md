@@ -40,8 +40,10 @@ early by placing OFF symbols. A track can be renamed using the outer mouse butto
   | Ctrl + Insert                         | Shift row down by one                                                 |
   | \-                                    | Place note OFF                                                        |
   | S                                     | Split pattern                                                         |
+  |                                       |                                                                       |  
+  | Shift + +/\-                          | Zoom in/out                                                           |    
   | Space                                 | Toggle play status                                                    |  
-  | Enter                                 | Open Hackey Trackey on pattern under cursor                           |
+  | Enter                                 | Open Hackey Trackey on pattern under cursor                           |  
   | CTRL \+ Q                             | Set loop start before current row                                     |
   | CTRL \+ W                             | Set loop end after current row                                        |
   | F11                                   | Switch theme                                                          |
