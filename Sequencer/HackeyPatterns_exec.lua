@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.41
+@version 0.42
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,9 @@
 
 --[[
  * Changelog:
+ * v0.42 (2018-11-04)
+   + Bugfix scrollbar.
+   + Added option to create new items (CTRL + Drag).
  * v0.41 (2018-11-04)
    + Improve sizing row indicator.
    + Add help file.
@@ -154,7 +157,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.40 (BETA)"
+scriptName = "Hackey Patterns v0.42 (BETA)"
 postMusic = 50000
 midiCMD = 40153
 
@@ -335,6 +338,7 @@ function seq:loadKeys( keySet )
       { 'CTRL + Insert/Backspace', 'Insert Row/Remove Row' },
       { 'Del/.', 'Delete' }, 
       { 'Space', 'Play' },
+      { 'Add New Pattern', 'Ctrl + Drag' },
       { 'Enter / Doubleclick', 'Open Hackey Trackey on pattern' },      
       { 'Alt + Doubleclick', 'Open MIDI editor on pattern' },
       { 'CTRL + L', 'Loop row' },
@@ -354,6 +358,11 @@ function seq:loadKeys( keySet )
     }
   end
 end
+
+-- Constants
+seq.NEWMIDICAP = 4;
+seq.DRAG_BLOCK = 1;
+seq.DRAG_NEW_MIDI_ITEM = 2;
 
 function seq:drawHelp()
   local wcmax = 0
@@ -1756,6 +1765,13 @@ function seq:updateGUI()
     gfx.rect(fw + (fw*scrollx*self.fov.width/(self.nVisibleTracks-self.fov.width-1)) + 1, gfx.h - fh + 1, fw-2, fh-2)    
   end
   
+  if ( self.dragging == self.DRAG_NEW_MIDI_ITEM ) then
+    local diff = self.newItem.yc - self.newItem.ypos
+    local yp = math.min( self.newItem.yc, self.newItem.yc - diff )
+    gfx.set(table.unpack(colors.scrollbar1))
+    gfx.rect(fw + fw*(self.newItem.xpos-fov.scrollx), 2*fh + yp*fh, fw, fh*(math.abs(diff)+1))
+  end
+  
   if ( self.renaming == 3 ) then
     self:drawHelp()
   end
@@ -2206,6 +2222,14 @@ function seq:addItem( idx )
   self:addItemDirect(v)
 end
 
+function seq:createPattern( xpos, ypos, nRows )
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local trk = self:visibilityTrafo( xpos )
+  if ( trk ) then
+    reaper.CreateNewMIDIItemInProj(reaper.GetTrack(0, trk), ypos*rps, (ypos+nRows)*rps)
+  end
+end
+
 function seq:addItemDirect(v)
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   if ( v ) then
@@ -2579,8 +2603,14 @@ function seq:processMouseActions()
       if ( scrollx < 0 ) then
         scrollx = 0
       end
-      if ( scrollx > self.nVisibleTracks-self.fov.width-1 ) then
+      if ( scrollx > (self.nVisibleTracks-self.fov.width-1) ) then
         scrollx = self.nVisibleTracks-self.fov.width-1
+      end
+      if ( self.xpos < scrollx ) then
+        self.xpos = scrollx
+      end
+      if ( self.xpos > scrollx ) then
+        self.xpos = scrollx
       end
       self.fov.scrollx = scrollx
     elseif ( gfx.mouse_x < fw ) then
@@ -2598,11 +2628,10 @@ function seq:processMouseActions()
         if ( lastLeft == 0 ) then
           -- Move the cursor pos on initial click
           seq:resetShiftSelect()
-          --seq:dragBlock(Inew+fov.scrollx, Jnew+fov.scrolly)
+          
           self.xpos = Inew - 1
           self.ypos = Jnew - 2
           self:forceCursorInRange()
-          self.dragging = 1
           
           local doubleClickInterval = 0.2
           if ( (ctime - self.lastLeftTime) < doubleClickInterval ) then
@@ -2617,11 +2646,22 @@ function seq:processMouseActions()
               end
             end
           end
-          seq:dragBlock(Inew-1, Jnew-2)
+          if ( gfx.mouse_cap & self.NEWMIDICAP == 0 ) then
+            self:dragBlock(Inew-1, Jnew-2)
+            self.dragging = self.DRAG_BLOCK
+          else
+            self.dragging = self.DRAG_NEW_MIDI_ITEM
+            self.newItem = {}
+            self.newItem.xpos = Inew-1
+            self.newItem.ypos = Jnew-2
+            self.newItem.yc   = Jnew-2
+          end
         else
           -- Change selection if it wasn't the initial click
-          if ( self.dragging ) then
-            seq:dragBlock(Inew-1, Jnew-2)
+          if ( self.dragging and self.dragging == self.DRAG_BLOCK ) then
+            self:dragBlock(Inew-1, Jnew-2)
+          else
+            self.newItem.yc   = Jnew-2
           end
         end
       end
@@ -2651,6 +2691,13 @@ function seq:processMouseActions()
     self.lastLeft = 1
     self.lastLeftTime = reaper.time_precise()
   else
+    if ( self.dragging == self.DRAG_NEW_MIDI_ITEM ) then
+      local Inew, Jnew = seq:calcGridCoord()
+      local diff = Jnew - 2 - self.newItem.ypos
+      local yp = math.min( self.newItem.ypos + diff, self.newItem.ypos )
+      self:createPattern( self.newItem.xpos, yp, math.abs(diff)+1 )
+      self:updateGUI()
+    end
     self.scrolldrag = nil
     self.dragging = nil
     self.lastLeft = 0
