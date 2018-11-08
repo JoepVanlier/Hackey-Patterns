@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.42
+@version 0.44
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,12 @@
 
 --[[
  * Changelog:
+ * v0.44 (2018-11-08)
+   + Fix nil bug when dragging from timeline into column.
+   + Add Ctrl + Enter as key to make new item based on loop selection.
+   + Add Ctrl + PgUp/PgDown to shift loop up / down by loopsize.
+ * v0.43 (2018-11-05)
+   + Add rename all patterns button.
  * v0.42 (2018-11-04)
    + Bugfix scrollbar.
    + Added option to create new items (CTRL + Drag).
@@ -157,7 +163,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.42 (BETA)"
+scriptName = "Hackey Patterns v0.44 (BETA)"
 postMusic = 50000
 midiCMD = 40153
 
@@ -267,12 +273,15 @@ function seq:loadKeys( keySet )
     keys.End            = { 0,    0,  0,    6647396 }       -- End
     keys.toggle         = { 0,    0,  0,    32 }            -- Space
     keys.playfrom       = { 0,    0,  1,    13 }            -- Shift + Enter
+    keys.newItem        = { 1,    0,  0,    13 }            -- Create new item from loop points
     keys.hackeytrackey  = { 0,    0,  0,    13 }            -- Enter
     keys.enter          = { 0,    0,  0,    13 }            -- Enter        
     keys.insert         = { 0,    0,  0,    6909555 }       -- Insert
     keys.remove         = { 0,    0,  0,    8 }             -- Backspace
     keys.pgup           = { 0,    0,  0,    1885828464 }    -- Page up
     keys.pgdown         = { 0,    0,  0,    1885824110 }    -- Page down
+    keys.advLoop        = { 1,    0,  0,    1885824110 }    -- Ctrl + Page down
+    keys.decLoop        = { 1,    0,  0,    1885828464 }    -- Ctrl + Page up
     keys.undo           = { 1,    0,  0,    26 }            -- CTRL + Z
     keys.redo           = { 1,    0,  1,    26 }            -- CTRL + SHIFT + Z
     keys.beginBlock     = { 1,    0,  0,    2 }             -- CTRL + B
@@ -282,7 +291,7 @@ function seq:loadKeys( keySet )
     keys.copyBlock      = { 1,    0,  0,    3 }             -- CTRL + C
     keys.help           = { 0,    0,  0,    26161 }         -- F1
     keys.advancedown    = { 0,    0,  0,    26164 }         -- F4
-    keys.advanceup      = { 0,    0,  0,    26165 }         -- F5
+    keys.renameAll      = { 0,    0,  0,    26165 }         -- F5
     keys.theme          = { 0,    0,  0,    6697265 }       -- F11   
     keys.panic          = { 0,    0,  0,    6697266 }       -- F12
     keys.setloop        = { 1,    0,  0,    12 }            -- CTRL + L
@@ -339,6 +348,9 @@ function seq:loadKeys( keySet )
       { 'Del/.', 'Delete' }, 
       { 'Space', 'Play' },
       { 'Add New Pattern', 'Ctrl + Drag' },
+      { 'Ctrl + Drag', 'Create new pattern' },
+      { 'Ctrl + Enter', 'Create new pattern based on loop positions' },
+      { 'Ctrl + PgDn/PgUp', 'Shift loop by loop length' },
       { 'Enter / Doubleclick', 'Open Hackey Trackey on pattern' },      
       { 'Alt + Doubleclick', 'Open MIDI editor on pattern' },
       { 'CTRL + L', 'Loop row' },
@@ -353,6 +365,7 @@ function seq:loadKeys( keySet )
       { 'F11/F12', 'Switch Theme / Panic' },
       { 'CTRL + N', 'Rename pattern' },
       { 'Shift + +/-', 'Zoom in/out' },
+      { 'F5',  'Reset pattern names for track' },
       { 'F11', 'Swap theme' },
       { 'F12', 'MIDI Panic' },
     }
@@ -1239,6 +1252,36 @@ function seq:buildPatternList()
   self.guidToPatternIdx = guidToPatternIdx
   self.idxToGUID        = idxToGUID
   self.patternNames     = patternNames
+end
+
+function seq:renameAll()
+  local poolGUIDs     = self.poolGUIDs
+  local trackToIndex  = self.trackToIndex
+  local patternNames  = self.patternNames
+  
+  -- Sort the GUID table
+  local sortedKeys = {}
+  for i in pairs(self.poolGUIDs) do
+    table.insert(sortedKeys, i)
+  end
+  table.sort(sortedKeys)
+  
+  local s = 0
+  for j,w in pairs(sortedKeys) do
+    i = w
+    v = poolGUIDs[w]
+    
+    trackidx = trackToIndex[v[2]]
+    if ( trackidx == self.xpos ) then
+      local name = string.format("%02d", s)
+      patternNames[trackidx][s] = name
+      reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true)
+      s = s + 1
+    end
+  end
+  
+  self.patternNames  = patternNames
+  self:updateGUI()
 end
 
 local function get_script_path()
@@ -2230,6 +2273,37 @@ function seq:createPattern( xpos, ypos, nRows )
   end
 end
 
+function seq:createPatternFromLoop()
+  local trk = self:visibilityTrafo( self.xpos )
+  if ( trk ) then
+    local beg, fin = reaper.GetSet_LoopTimeRange2(0, false, 1, 0, 1, 0)
+    reaper.CreateNewMIDIItemInProj(reaper.GetTrack(0, trk), beg, fin)
+  end
+end
+
+function seq:advLoop()
+  local beg, fin = reaper.GetSet_LoopTimeRange2(0, false, 1, 0, 1, 0)
+  local dy = fin-beg
+  if ( dy > 0 ) then
+    beg = beg + dy
+    fin = fin + dy
+    reaper.GetSet_LoopTimeRange2(0, true, 1, beg, fin, 1)  
+  end
+end
+
+function seq:decLoop()
+  local beg, fin = reaper.GetSet_LoopTimeRange2(0, false, 1, 0, 1, 0)
+  local dy = fin-beg
+  if ( dy > 0 ) then
+    beg = beg - dy
+    if ( beg < 0 ) then
+      beg = 0
+    end
+    fin = beg + dy
+    reaper.GetSet_LoopTimeRange2(0, true, 1, beg, fin, 1)  
+  end
+end
+
 function seq:addItemDirect(v)
   local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   if ( v ) then
@@ -2658,10 +2732,12 @@ function seq:processMouseActions()
           end
         else
           -- Change selection if it wasn't the initial click
-          if ( self.dragging and self.dragging == self.DRAG_BLOCK ) then
-            self:dragBlock(Inew-1, Jnew-2)
-          else
-            self.newItem.yc   = Jnew-2
+          if ( self.dragging ) then
+            if ( self.dragging == self.DRAG_BLOCK ) then
+              self:dragBlock(Inew-1, Jnew-2)
+            elseif ( self.dragging == self.DRAG_NEW_MIDI_ITEM ) then
+              self.newItem.yc   = Jnew-2
+            end
           end
         end
       end
@@ -3009,7 +3085,6 @@ local function updateLoop()
   end
   seq:updateGUI()
   seq.lastTrackCount = reaper.CountTracks(0)
-  
   if lastChar ~= -1 then
     seq.change = 1
     if ( seq.renaming == 0 ) then
@@ -3242,7 +3317,15 @@ local function updateLoop()
       elseif ( inputs('deleteBlock') ) then
         seq:BlockUIRefresh()
         seq:deleteBlock()
-        seq:PopUIBlock()      
+        seq:PopUIBlock()
+      elseif ( inputs('renameAll') ) then
+        seq:renameAll()
+      elseif ( inputs('newItem') ) then
+        seq:createPatternFromLoop()
+      elseif ( inputs('advLoop') ) then
+        seq:advLoop()
+      elseif ( inputs('decLoop') ) then
+        seq:decLoop()
       else
         seq.change = 0
       end
