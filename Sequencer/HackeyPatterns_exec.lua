@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.44
+@version 0.45
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.45 (2018-11-08)
+   + Lump all copy to pool actions into single action to avoid polluting the undo list too much.
  * v0.44 (2018-11-08)
    + Fix nil bug when dragging from timeline into column.
    + Add Ctrl + Enter as key to make new item based on loop selection.
@@ -163,7 +165,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.44 (BETA)"
+scriptName = "Hackey Patterns v0.45 (BETA)"
 postMusic = 50000
 midiCMD = 40153
 
@@ -970,11 +972,18 @@ function seq:copyUnknownToPool()
   
   self:pushPosition()
 
+  local startedBlock
+
   -- Check if there are patterns that aren't in the pool yet.
   local maxloc = self.maxloc
   for i,v in pairs( trackItems ) do
     local GUID = v[4]
     if ( not poolGUIDs[GUID] ) then
+      if ( not startedBlock ) then
+        startedBlock = 1;
+        reaper.Undo_BeginBlock2(0)
+      end
+      
       -- Duplicate these
       self:selectMediaItem(v[1])
       local cTrack = v[2]
@@ -1018,6 +1027,10 @@ function seq:copyUnknownToPool()
     end
   end
   if ( not offItem ) then
+    if ( not startedBlock ) then
+      startedBlock = 1;
+      reaper.Undo_BeginBlock2(0)
+    end
     local cTrack    = reaper.GetTrack(0,0)
     local mediaItem = reaper.CreateNewMIDIItemInProj(cTrack, maxloc[cTrack], reaper.TimeMap2_QNToTime(0, 1) * 0.125, nil)
     local take      = reaper.GetActiveTake(mediaItem)
@@ -1059,6 +1072,11 @@ function seq:copyUnknownToPool()
               local loc2 = reaper.GetMediaItemInfo_Value(w[1], "D_POSITION")
               local autoidx = envPositions[trackEnv][loc2]
               if ( autoidx ) then
+                if ( not startedBlock ) then
+                  startedBlock = 1;
+                  reaper.Undo_BeginBlock2(0)
+                end
+              
                 -- Found one that has automation! Copy it now!
                 local poolidx = reaper.GetSetAutomationItemInfo(trackEnv, autoidx[1], "D_POOL_ID", 0, false)
                 reaper.InsertAutomationItem(trackEnv, poolidx, loc, len)
@@ -1069,6 +1087,11 @@ function seq:copyUnknownToPool()
             end
           end
           if ( foundOne == 0 ) then
+            if ( not startedBlock ) then
+              startedBlock = 1;
+              reaper.Undo_BeginBlock2(0)
+            end
+          
             -- If we get to the end, just make a new one.
             local autoidx = reaper.InsertAutomationItem(trackEnv, -1, loc, len)
             local poolidx = reaper.GetSetAutomationItemInfo(trackEnv, autoidx, "D_POOL_ID", 0, false)
@@ -1093,12 +1116,21 @@ function seq:copyUnknownToPool()
           if ( poolItem ) then
             autoidx = envPositions[trackEnv][reaper.GetMediaItemInfo_Value(poolItem[1], "D_POSITION")]
             if ( autoidx ) then
+              if ( not startedBlock ) then
+                startedBlock = 1;
+                reaper.Undo_BeginBlock2(0)
+              end
               reaper.InsertAutomationItem(trackEnv, autoidx[2], loc, len)
             end
           end
         end
       end
     end
+  end
+  
+  -- We modified stuff. Make an undo point!
+  if ( startedBlock ) then
+    reaper.Undo_EndBlock2(0, "Synchronized pools", 0)
   end
   
   self.offItem = offItem
