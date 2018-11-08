@@ -2,6 +2,8 @@
 
 A LUA sequencer plugin for REAPER 5.x and up. Designed to mimick the pattern sequencer in Jeskola Buzz.
 
+![Hackey Pattern in Action](https://i.imgur.com/2g22kvU.gif)
+
 Warning: This plugin is still in BETA. Use entirely at your own risk! Remember to save often and under different filenames!
 
 ## Installation
