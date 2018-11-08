@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="f5c7085f50d5a77e4cd87943de00ad031ede3ffb">
+<index version="1" name="Hackey Sequencer" commit="a516c2ee8eda715522e55b9b6addf85f50bc235b">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
@@ -208,6 +208,12 @@
         <changelog><![CDATA[+ Bugfix scrollbar.
 + Added option to create new items (CTRL + Drag).]]></changelog>
         <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/f5c7085f50d5a77e4cd87943de00ad031ede3ffb/Sequencer/HackeyPatterns_exec.lua</source>
+      </version>
+      <version name="0.44" author=": Joep Vanlier" time="2018-11-08T21:04:50Z">
+        <changelog><![CDATA[+ Fix nil bug when dragging from timeline into column.
++ Add Ctrl + Enter as key to make new item based on loop selection.
++ Add Ctrl + PgUp/PgDown to shift loop up / down by loopsize.]]></changelog>
+        <source main="main">https://github.com/JoepVanlier/Hackey-Patterns/raw/a516c2ee8eda715522e55b9b6addf85f50bc235b/Sequencer/HackeyPatterns_exec.lua</source>
       </version>
     </reapack>
   </category>
