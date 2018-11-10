@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.45
+@version 0.46
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,10 @@
 
 --[[
  * Changelog:
+ * v0.46 (2018-11-10)
+   + Changed Ctrl + Enter behaviour.
+   + Maintain pool order.
+   + Improved rename all (F5) behaviour
  * v0.45 (2018-11-08)
    + Lump all copy to pool actions into single action to avoid polluting the undo list too much.
  * v0.44 (2018-11-08)
@@ -165,7 +169,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.45 (BETA)"
+scriptName = "Hackey Patterns v0.46 (BETA)"
 postMusic = 50000
 midiCMD = 40153
 
@@ -948,7 +952,7 @@ function seq:fetchPatterns()
       local loc = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
       local len = reaper.GetMediaItemInfo_Value(mediaItem, "D_LENGTH")
       if ( loc >= postMusic ) then
-        poolGUIDs[GUID] = { mediaItem, track, take }
+        poolGUIDs[GUID] = { mediaItem, track, take, loc }
         if ( (loc+len) > maxloc[track] ) then
           maxloc[track] = loc + len + 1
         end
@@ -1002,7 +1006,7 @@ function seq:copyUnknownToPool()
           if ( ( nloc > ( maxloc[cTrack] - eps ) ) and ( nloc < ( maxloc[cTrack] + eps ) ) ) then      
             local newPoolItemTake = reaper.GetActiveTake(newPoolItem)
             if ( reaper.ValidatePtr2( 0, newPoolItemTake, "MediaItem_Take*" ) ) then
-              poolGUIDs[GUID] = {newPoolItem, newPoolItemTrack, newPoolItemTake}
+              poolGUIDs[GUID] = {newPoolItem, newPoolItemTrack, newPoolItemTake, nloc}
               if ( maxloc[cTrack] ) then
                 local nloc = maxloc[cTrack] + reaper.GetMediaItemInfo_Value(v[1], "D_LENGTH") + 1
                 maxloc[cTrack] = nloc        
@@ -1211,6 +1215,21 @@ function seq:deleteFromPool(trackidx, poolidx)
   reaper.Main_OnCommand(40006, 0) -- Delete automation items
 end
 
+function seq:findMaxPat( patNames )
+  local maxv = 0
+  for i,v in pairs( patNames ) do
+    local val = tonumber(string.match(v, "%d+"))
+    if ( val and val >= maxv ) then
+      maxv = val + 1
+    end
+  end
+  if ( maxv > 99 ) then
+    maxv = 0
+  end
+  
+  return maxv
+end
+
 -- Index the GUID
 function seq:buildPatternList()
   -- These tables should eventually be stored and loaded from the track
@@ -1244,15 +1263,18 @@ function seq:buildPatternList()
   
   -- Sort the GUID table
   local sortedKeys = {}
-  for i in pairs(self.poolGUIDs) do
-    table.insert(sortedKeys, i)
+  for i,v in pairs(self.poolGUIDs) do
+    --table.insert(sortedKeys, i)
+    table.insert(sortedKeys, {v[4], i})
   end
-  table.sort(sortedKeys)
+  table.sort(sortedKeys, function(a,b) return a[1] < b[1] end )
   
   local poolGUIDs = self.poolGUIDs
-  for j,w in pairs( sortedKeys ) do
-    i = w
-    v = poolGUIDs[w]
+  for j,w in ipairs( sortedKeys ) do
+--    i = w
+--    v = poolGUIDs[w]
+    i = w[2]
+    v = poolGUIDs[w[2]]
     
     trackidx = trackToIndex[v[2]]
     index = idx[trackidx]
@@ -1262,16 +1284,20 @@ function seq:buildPatternList()
       if ( not guidToPatternIdx[trackidx][i] ) then
         guidToPatternIdx[trackidx][i] = index
         idxToGUID[trackidx][index]    = i
-        
+
         local str = reaper.GetTakeName(v[3])
         if ( str == "untitled MIDI item" ) then
-          local name = string.format("%02d", index-1)
+          --local name = string.format("%02d", index-1)
+          local name = string.format("%02d", self:findMaxPat(patternNames[trackidx]) )
           patternNames[trackidx][index] = name
-          reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true)
+          --reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true)
+          seq:setNameByGUID(w[2], name)
         elseif ( str == "" ) then
-          local name = string.format("%02d", index-1)
+          --local name = string.format("%02d", index-1)
+          local name = string.format("%02d", self:findMaxPat(patternNames[trackidx]) )
           patternNames[trackidx][index] = name
-          reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true)        
+          --reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true) 
+          seq:setNameByGUID(w[2], name)       
         else
           patternNames[trackidx][index] = fitStr( str, cellw )
         end
@@ -1286,28 +1312,44 @@ function seq:buildPatternList()
   self.patternNames     = patternNames
 end
 
+function seq:setNameByGUID(GUID, name)
+  for i=0,reaper.CountMediaItems(0)-1 do
+    local mItem = reaper.GetMediaItem(0, i)
+    local mTake = reaper.GetActiveTake(mItem)
+    if ( reaper.TakeIsMIDI(mTake) ) then
+      local mGUID = self:getTakeGUID(mTake)
+      if ( mGUID == GUID ) then
+        reaper.GetSetMediaItemTakeInfo_String(mTake, "P_NAME", name, true)
+      end
+    end
+  end
+end
+
 function seq:renameAll()
   local poolGUIDs     = self.poolGUIDs
   local trackToIndex  = self.trackToIndex
   local patternNames  = self.patternNames
-  
+    
   -- Sort the GUID table
   local sortedKeys = {}
-  for i in pairs(self.poolGUIDs) do
-    table.insert(sortedKeys, i)
+  for i,v in pairs(self.poolGUIDs) do
+    --table.insert(sortedKeys, i)
+    table.insert(sortedKeys, {v[4], i})
   end
-  table.sort(sortedKeys)
+  --table.sort(sortedKeys)
+  table.sort(sortedKeys, function(a,b) return a[1] < b[1] end )  
   
   local s = 0
   for j,w in pairs(sortedKeys) do
-    i = w
-    v = poolGUIDs[w]
+    i = w[2]
+    v = poolGUIDs[w[2]]
     
     trackidx = trackToIndex[v[2]]
     if ( trackidx == self.xpos ) then
       local name = string.format("%02d", s)
       patternNames[trackidx][s] = name
-      reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true)
+      seq:setNameByGUID(w[2], name)
+      --reaper.GetSetMediaItemTakeInfo_String(v[3], "P_NAME", name, true)
       s = s + 1
     end
   end
@@ -2306,10 +2348,11 @@ function seq:createPattern( xpos, ypos, nRows )
 end
 
 function seq:createPatternFromLoop()
+  local rps = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local trk = self:visibilityTrafo( self.xpos )
   if ( trk ) then
     local beg, fin = reaper.GetSet_LoopTimeRange2(0, false, 1, 0, 1, 0)
-    reaper.CreateNewMIDIItemInProj(reaper.GetTrack(0, trk), beg, fin)
+    reaper.CreateNewMIDIItemInProj(reaper.GetTrack(0, trk), self.ypos*rps, self.ypos*rps+(fin-beg))
   end
 end
 
