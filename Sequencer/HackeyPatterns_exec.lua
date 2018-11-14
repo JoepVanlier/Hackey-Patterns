@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.46
+@version 0.47
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,10 @@
 
 --[[
  * Changelog:
+ * v0.47 (2018-11-13)
+   + When follow row is on, actually follow on the timeline.
+   + Added option for minimal pattern display (set tinyPatterns to 1 in the config file).
+   + Added vertical scrollbar.
  * v0.46 (2018-11-10)
    + Changed Ctrl + Enter behaviour.
    + Maintain pool order.
@@ -169,7 +173,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.46 (BETA)"
+scriptName = "Hackey Patterns v0.47 (BETA)"
 postMusic = 50000
 midiCMD = 40153
 
@@ -207,6 +211,10 @@ seq.cfg.renameSplit    = 1
 seq.cfg.largeScrollFwd = 4
 seq.cfg.largeScrollBwd = 4
 seq.cfg.isLinux        = 0
+seq.cfg.tinyPatterns   = 0
+seq.cfg.lineDist       = 8
+seq.cfg.scrollbarWidth = 13
+seq.cfg.minPatWidth    = 45
 
 seq.advance       = 1
 seq.cfg.zoom      = 1
@@ -686,12 +694,15 @@ function scrollbar.create( w )
   self.mouseUpdate = function(self, mx, my, left)
     local loc
     if ( left == 1 ) then
-      if ( ( mx > self.x ) and ( mx < self.x + self.w ) ) then
-        if ( ( my > self.y ) and ( my < self.y + self.h ) ) then
-          loc = ( my - self.y ) / self.h
-        end
+      if self.captured or ( ( self.lastleft == 0 ) and ( mx > self.x ) and ( mx < self.x + self.w ) ) and ( ( my > self.y ) and ( my < self.y + self.h ) ) then
+        loc = ( my - self.y ) / self.h
+        self.captured = 1
       end
+      self.lastleft = left
       return loc
+    else
+      self.lastleft = 0
+      self.captured = nil
     end
   end
   
@@ -705,10 +716,10 @@ function scrollbar.create( w )
     
     gfx.set(table.unpack(colors.scrollbar1))
     gfx.rect(x, y, w, h)
+    --gfx.set(table.unpack(colors.scrollbar2))
+    --gfx.rect(x+1, y+1, w-2, h-2)
     gfx.set(table.unpack(colors.scrollbar2))
-    gfx.rect(x+1, y+1, w-2, h-2)
-    gfx.set(table.unpack(colors.scrollbar1))
-    gfx.rect(x+2, y + ytop*h+2, w-4, (yend-ytop)*h-3)
+    gfx.rect(x+1, y + ytop*h+1, w-2, (yend-ytop)*h-2)
   end
   
   return self
@@ -936,6 +947,7 @@ function seq:fetchPatterns()
   
   local c = 0
   local maxloc = {}
+  local lastItemEnd = 0
   for i=0,reaper.CountTracks(0)-1 do
     local track = reaper.GetTrack(0, i)
     maxloc[track] = postMusic
@@ -957,15 +969,19 @@ function seq:fetchPatterns()
           maxloc[track] = loc + len + 1
         end
       else
+        if ( loc > lastItemEnd ) then 
+          lastItemEnd = loc
+        end
         trackItems[c] = { mediaItem, track, take, GUID }
         c = c + 1
       end
     end
   end
   
-  self.poolGUIDs  = poolGUIDs
-  self.trackItems = trackItems
-  self.maxloc     = maxloc
+  self.poolGUIDs      = poolGUIDs
+  self.trackItems     = trackItems
+  self.maxloc         = maxloc
+  self.lastItemEnd    = lastItemEnd
 end
   
 function seq:copyUnknownToPool()
@@ -1583,7 +1599,10 @@ function seq:updateGUI()
 
   local xOrigin       = 0
   local yOrigin       = 0
-   
+  
+  local cfg           = self.cfg
+  local rps           = reaper.TimeMap2_QNToTime(0, 1) * cfg.zoom
+  
   gfx.setfont(1, colors.patternFont, colors.patternFontSize)
   local xStart = 0
   local xEnd = fov.width
@@ -1692,10 +1711,18 @@ function seq:updateGUI()
         gfx.rect( gfx.x-3, gfx.y, fw, fh-1+nextElement )
         if ( curElement >= 0 ) then
           gfx.set( table.unpack( colors.textcolor ) )
-          if ( elementColor == -1 ) then
-            gfx.printf("%s [M]", patternNames[ix+scrollx][curElement]:sub(1,-4))
+          if ( seq.cfg.tinyPatterns == 0 ) then
+            if ( elementColor == -1 ) then
+              gfx.printf("%s [M]", patternNames[ix+scrollx][curElement]:sub(1,-4))
+            else
+              gfx.printf("%s", patternNames[ix+scrollx][curElement])
+            end
           else
-            gfx.printf("%s", patternNames[ix+scrollx][curElement])
+            if ( elementColor == -1 ) then
+              gfx.printf("%02d [M]", curElement - 1)
+            else
+              gfx.printf("%02d", curElement - 1)
+            end          
           end
         else
         end
@@ -1751,7 +1778,11 @@ function seq:updateGUI()
         end
         gfx.x = xOrigin + fw * ( 1 + xrel ) + 3
         gfx.y = xOrigin + ( 2 + yrel ) * fh
-        gfx.printf("%s", patternNames[self.xpos][curElement])
+        if ( seq.cfg.tinyPatterns == 0 ) then
+          gfx.printf("%s", patternNames[self.xpos][curElement])
+        else
+          gfx.printf("%02d", curElement-1)
+        end
       end
     end
   end
@@ -1761,7 +1792,7 @@ function seq:updateGUI()
   gfx.set( table.unpack( colors.textcolor ) )
   
   -- Tick counts
-  local res = seq.res * self.cfg.zoom
+  local res = seq.res * cfg.zoom
   local xs = xOrigin + fw - 5
   for iy=0,ymax do
     str = string.format( "%3d", res * (iy +scrolly)  )
@@ -1776,21 +1807,34 @@ function seq:updateGUI()
   gfx.set( table.unpack( colors.inactive ) )
   gfx.rect( xOrigin+fw, yOrigin, fw * (xEnd-xStart+1), 1 )
   gfx.rect( xOrigin+fw, yOrigin + fh-1, fw * (xEnd-xStart+1), 1 )
-  gfx.rect( xOrigin+fw, yOrigin + 2*fh-1, fw * (xEnd-xStart+1), 1 )
-   
+  gfx.rect( xOrigin+fw, yOrigin + 2*fh-1, fw * (xEnd-xStart+1), 1 )   
+  
+  if ( self.nVisibleTracks > self.fov.width ) then
+    self.sequencerScrollbar:setPos( (xEnd-xStart+2)*fw, 2*fh, gfx.h-3*fh )
+  else
+    self.sequencerScrollbar:setPos( (xEnd-xStart+2)*fw, 2*fh, gfx.h-2*fh )
+  end
+  local lastRow = math.max( self.ypos, math.floor(self.lastItemEnd / rps + .5 * ymax + .5) )
+  if ( lastRow < ymax ) then
+    lastRow = ymax
+  end
+  self.sequencerScrollbar:setExtent( scrolly/lastRow, (scrolly+ymax)/lastRow )
+  self.sequencerScrollbar:draw(colors)
+  
   -------------------------------------
   -- Draw pattern names
   --------------------------------------
   self.patternScrollbar:setPos( gfx.w - 30, 3*fh, fh * (seq.cfg.patternLines) )
-    
-  local cfg = self.cfg
   gfx.set( table.unpack( colors.textcolor ) )
   if ( not isempty(patterns) ) then
+    gfx.line( gfx.w - cfg.nameSize - cfg.lineDist, 0, gfx.w - cfg.nameSize - cfg.lineDist, gfx.h )
     local X = gfx.w - cfg.nameSize
     local boxsize = cfg.boxsize
     gfx.x = X 
     gfx.y = fh
-    gfx.printf( "Track patterns/items" )
+    if ( seq.cfg.tinyPatterns == 0 ) then
+      gfx.printf( "Patterns" )
+    end
     local chars = seq.chars
     local patternNames = self.patternNames[self.xpos]
     local nP = #patternNames
@@ -1810,7 +1854,7 @@ function seq:updateGUI()
     local j = 1
     for i=min+1,max do
       local v = patternNames[i]
-      local Y = (2+j) * fh
+      local Y = (2*(1-self.cfg.tinyPatterns)+j) * fh
       gfx.line(X, Y, X+boxsize, Y+boxsize)
       gfx.line(X+boxsize, Y, X, Y+boxsize)
       gfx.line(X, Y, X+boxsize, Y)
@@ -1820,7 +1864,11 @@ function seq:updateGUI()
       gfx.line(X, Y+boxsize, X+boxsize, Y+boxsize)
       gfx.x = X+14
       gfx.y = Y-1
-      gfx.printf( "%s. %s", chars:sub(i,i), v )
+      if ( seq.cfg.tinyPatterns == 0 ) then
+        gfx.printf( "%s. %s", chars:sub(i,i), v )
+      else
+        gfx.printf( "%s. %02d", chars:sub(i,i), i-1 )
+      end
       j = j + 1
     end
     
@@ -1833,7 +1881,6 @@ function seq:updateGUI()
   ------------------------------
   -- Play location indicator
   ------------------------------
-  local rps = reaper.TimeMap2_QNToTime(0, 1) * cfg.zoom
   local playLoc = self:getPlayLocation() / rps - scrolly
 
   gfx.x = xOrigin + (fov.width+1)*fw + 3
@@ -1937,13 +1984,13 @@ function seq:forceCursorInRange(forceY)
 end
 
 function seq:computeSize()
-  self.fov.width = math.floor( ( gfx.w - self.cfg.nameSize - .99 * self.cellw ) / self.cellw ) - 1
+  self.fov.width = math.floor( ( gfx.w - self.cfg.nameSize - self.cfg.lineDist - self.cfg.scrollbarWidth - .99 * self.cellw ) / self.cellw ) - 1
   self.fov.height = math.floor( gfx.h / self.cellh ) - 3
   
   if ( (self.fov.width + self.fov.scrollx) >= reaper.CountTracks() ) then
     self.fov.scrollx = math.max( 0, reaper.CountTracks() - self.fov.width - 1 )
   end  
-  
+   
   self.max_xpos = self:CountVisibleTracks()
   self.max_ypos = 4096
 end
@@ -2713,185 +2760,222 @@ function seq:processMouseActions()
   local ctime               = reaper.time_precise()
   local lastLeft            = self.lastLeft
   local rps                 = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local res                 = self.res
   
   local loc = self.patternScrollbar:mouseUpdate(gfx.mouse_x, gfx.mouse_y, left)
   if ( loc ) then
     self.fov.scrollpat = loc
   end
   
-  if ( gfx.mouse_wheel ~= 0 ) then
-    local scFactor = 1
-    if ( ( gfx.mouse_cap & 8 ) == 0 ) then
-      if ( gfx.mouse_wheel < 0 ) then
-        scFactor = self.cfg.largeScrollFwd
-      else
-        scFactor = self.cfg.largeScrollBwd
-      end
+  local loc = self.sequencerScrollbar:mouseUpdate(gfx.mouse_x, gfx.mouse_y, left)
+  if ( loc ) then
+    local ymax = fov.height
+    local lastRow = math.max( self.ypos, math.floor(self.lastItemEnd / rps + .5 * ymax + .5) )
+    if ( lastRow < ymax ) then
+      lastRow = ymax
     end
+    self.fov.scrolly = math.floor(loc * lastRow)
+    if ( self.fov.scrolly < 0 ) then
+      self.fov.scrolly = 0
+    end
+    if ( self.fov.scrolly > lastRow - ymax ) then
+      self.fov.scrolly = lastRow - ymax
+    end
+    if ( self.ypos < self.fov.scrolly ) then
+      self.ypos = self.fov.scrolly
+    end
+    if ( self.ypos > (self.fov.scrolly + ymax - 1) ) then
+      self.ypos = self.fov.scrolly + ymax-1
+    end
+    if ( seq.cfg.followRow == 1 ) then
+      reaper.SetEditCurPos2(0, seq.ypos * rps, true, false)
+    end
+    self:updateGUI()
+  else
   
-    self.ypos = self.ypos - scFactor * math.floor( gfx.mouse_wheel / 120 )
-    self:resetShiftSelect()
-    gfx.mouse_wheel = 0
-  end 
-  
-  if ( left == 1 ) then
-    if ( gfx.mouse_y < fh ) then
-    elseif ( gfx.mouse_y > fh and gfx.mouse_y < 2*fh ) then
-      -- Mute / Solo handling
-      local cTrack = math.floor( gfx.mouse_x / fw )
-      if ( lastLeft == 0 and cTrack > 0 ) then
-        if ( gfx.mouse_x - fw * cTrack ) < 0.5 * fw then
-          self:toggleMute(scrollx + cTrack-1)
+    if ( gfx.mouse_wheel ~= 0 ) then
+      local scFactor = 1
+      if ( ( gfx.mouse_cap & 8 ) == 0 ) then
+        if ( gfx.mouse_wheel < 0 ) then
+          scFactor = self.cfg.largeScrollFwd
         else
-          self:toggleSolo(scrollx + cTrack-1)
+          scFactor = self.cfg.largeScrollBwd
         end
       end
-    elseif ( self.scrolldrag or ( self.nVisibleTracks > self.fov.width and gfx.mouse_y > (gfx.h - fh) and ( gfx.mouse_x > fw ) and (gfx.mouse_x < fw * (self.fov.width + 2)) ) ) then       
-      local scrollx = math.floor((gfx.mouse_x - fw)*(self.nVisibleTracks-self.fov.width-1)/(fw*self.fov.width))
-      self.scrolldrag = 1
-      if ( scrollx < 0 ) then
-        scrollx = 0
-      end
-      if ( scrollx > (self.nVisibleTracks-self.fov.width-1) ) then
-        scrollx = self.nVisibleTracks-self.fov.width-1
-      end
-      if ( self.xpos < scrollx ) then
-        self.xpos = scrollx
-      end
-      if ( self.xpos > scrollx ) then
-        self.xpos = scrollx
-      end
-      self.fov.scrollx = scrollx
-    elseif ( gfx.mouse_x < fw ) then
-      --reaper.SetEditCurPos2(0, ( math.floor(gfx.mouse_y / fh) - 2 ) * rps, true, false)
-      self:BlockUIRefresh()
-      local loc = reaper.AddProjectMarker(0, 0, ( math.floor(gfx.mouse_y / fh) - 2 ) * rps, 0, "", -1)
-      reaper.GoToMarker(0, loc, 0)
-      reaper.DeleteProjectMarker(0, loc, 0)
-      self:PopUIBlock()
-    elseif ( gfx.mouse_x < fw * (fov.width+2) ) then
-      -- Click inside the grid
-      local Inew, Jnew = seq:calcGridCoord()
-
-      if ( Inew and Jnew ) then        
+    
+      self.ypos = self.ypos - scFactor * math.floor( gfx.mouse_wheel / 120 )
+      self:resetShiftSelect()
+      gfx.mouse_wheel = 0
+    end 
+    
+    if ( left == 1 ) then
+      if ( gfx.mouse_y < fh ) then
+      elseif ( gfx.mouse_y > fh and gfx.mouse_y < 2*fh ) then
+        -- Mute / Solo handling
+        local cTrack = math.floor( gfx.mouse_x / fw )
+        if ( lastLeft == 0 and cTrack > 0 ) then
+          if ( gfx.mouse_x - fw * cTrack ) < 0.5 * fw then
+            self:toggleMute(scrollx + cTrack-1)
+          else
+            self:toggleSolo(scrollx + cTrack-1)
+          end
+        end
+      elseif ( self.dragPatSize ) then
+        self.cfg.nameSize = gfx.w - gfx.mouse_x - self.cfg.lineDist
+        if ( self.cfg.nameSize < self.cfg.minPatWidth ) then
+          self.cfg.nameSize = self.cfg.minPatWidth
+        end
+        self:saveConfig("seq.cfg", self.cfg)
+      elseif ( lastLeft == 0 and ( math.abs( gfx.mouse_x - (gfx.w - self.cfg.nameSize - self.cfg.lineDist) ) < 3 ) ) then
+        self.dragPatSize = 1
+      elseif ( self.scrolldrag or ( self.lastLeft == 0 and self.nVisibleTracks > self.fov.width and gfx.mouse_y > (gfx.h - fh) and ( gfx.mouse_x > fw ) and (gfx.mouse_x < fw * (self.fov.width + 2)) ) ) then       
+        local scrollx = math.floor((gfx.mouse_x - fw)*(self.nVisibleTracks-self.fov.width-1)/(fw*self.fov.width))
+        self.scrolldrag = 1
+        if ( scrollx < 0 ) then
+          scrollx = 0
+        end
+        if ( scrollx > (self.nVisibleTracks-self.fov.width-1) ) then
+          scrollx = self.nVisibleTracks-self.fov.width-1
+        end
+        if ( self.xpos < scrollx ) then
+          self.xpos = scrollx
+        end
+        if ( self.xpos > scrollx ) then
+          self.xpos = scrollx
+        end
+        self.fov.scrollx = scrollx
+      elseif ( gfx.mouse_x < fw ) then
+        --reaper.SetEditCurPos2(0, ( math.floor(gfx.mouse_y / fh) - 2 ) * rps, true, false)
+        self:BlockUIRefresh()
+        local loc = reaper.AddProjectMarker(0, 0, ( math.floor(gfx.mouse_y / fh) - 2 ) * rps, 0, "", -1)
+        reaper.GoToMarker(0, loc, 0)
+        reaper.DeleteProjectMarker(0, loc, 0)
+        self:PopUIBlock()
+      elseif ( gfx.mouse_x < fw * (fov.width+2) ) then
+        -- Click inside the grid
+        local Inew, Jnew = seq:calcGridCoord()
+  
+        if ( Inew and Jnew ) then        
+          if ( lastLeft == 0 ) then
+            -- Move the cursor pos on initial click
+            seq:resetShiftSelect()
+            
+            self.xpos = Inew - 1
+            self.ypos = Jnew - 2
+            self:forceCursorInRange()
+            
+            local doubleClickInterval = 0.2
+            if ( (ctime - self.lastLeftTime) < doubleClickInterval ) then
+              if ( gfx.mouse_cap & OPENMIDICAP ==  0 ) then
+                self:startHT(self:visibilityTrafo(self.xpos), self.ypos)
+              else
+                reaper.Main_OnCommand(40769, 0) -- Deselect all items
+                local itemData = seq:findMIDI(self.xpos, self.ypos)
+                if ( itemData ) then
+                  reaper.SetMediaItemInfo_Value(itemData[1], "B_UISEL", 1)
+                  reaper.Main_OnCommand(midiCMD, 0) -- Deselect all items
+                end
+              end
+            end
+            if ( gfx.mouse_cap & self.NEWMIDICAP == 0 ) then
+              self:dragBlock(Inew-1, Jnew-2)
+              self.dragging = self.DRAG_BLOCK
+            else
+              self.dragging = self.DRAG_NEW_MIDI_ITEM
+              self.newItem = {}
+              self.newItem.xpos = Inew-1
+              self.newItem.ypos = Jnew-2
+              self.newItem.yc   = Jnew-2
+            end
+          else
+            -- Change selection if it wasn't the initial click
+            if ( self.dragging ) then
+              if ( self.dragging == self.DRAG_BLOCK ) then
+                self:dragBlock(Inew-1, Jnew-2)
+              elseif ( self.dragging == self.DRAG_NEW_MIDI_ITEM ) then
+                self.newItem.yc   = Jnew-2
+              end
+            end
+          end
+        end
+      else
+        -- Pattern / settings area
         if ( lastLeft == 0 ) then
-          -- Move the cursor pos on initial click
-          seq:resetShiftSelect()
-          
+          local boxsize = self.cfg.boxsize
+          if ( gfx.mouse_x > gfx.w - self.cfg.nameSize ) then
+            if ( gfx.mouse_x < gfx.w - self.cfg.nameSize + boxsize ) then
+              i = math.floor((gfx.mouse_y - 2) / fh)-2
+              if ( i > 0 ) then
+                local pNames = self.patternNames[self.xpos]
+                -- Which pattern are we trying to delete?
+                if i <= #pNames then
+                  reaper.Undo_OnStateChange2(0, "Sequencer: Delete from pool")
+                  reaper.MarkProjectDirty(0)
+                  local scroll = math.floor( self.fov.scrollpat * (#pNames - self.cfg.patternLines + 1) )
+                  self:deleteFromPool(self.xpos, i+scroll)
+                  reaper.UpdateArrange()
+                end
+              end
+            end
+          end
+        end
+      end
+      
+      self.lastLeft = 1
+      self.lastLeftTime = reaper.time_precise()
+    else
+      if ( self.dragging == self.DRAG_NEW_MIDI_ITEM ) then
+        local Inew, Jnew = seq:calcGridCoord()
+        local diff = Jnew - 2 - self.newItem.ypos
+        local yp = math.min( self.newItem.ypos + diff, self.newItem.ypos )
+        self:createPattern( self.newItem.xpos, yp, math.abs(diff)+1 )
+        self:updateGUI()
+      end
+      self.scrolldrag = nil
+      self.dragPatSize = nil
+      self.dragging = nil
+      self.lastLeft = 0
+    end
+    
+    if ( right == 1 ) then
+      if ( gfx.mouse_y < fh and self.lastRight == 0 ) then
+        local cTrack = math.floor( gfx.mouse_x / fw )
+        if ( cTrack < reaper.CountTracks(0) ) then
+          seq:renameTrack(scrollx + cTrack - 1)
+        end
+      elseif ( gfx.mouse_y > 2 * fh ) then
+        local Inew, Jnew = seq:calcGridCoord()
+        if ( Inew and Jnew ) then        
           self.xpos = Inew - 1
           self.ypos = Jnew - 2
           self:forceCursorInRange()
-          
-          local doubleClickInterval = 0.2
-          if ( (ctime - self.lastLeftTime) < doubleClickInterval ) then
-            if ( gfx.mouse_cap & OPENMIDICAP ==  0 ) then
-              self:startHT(self:visibilityTrafo(self.xpos), self.ypos)
-            else
-              reaper.Main_OnCommand(40769, 0) -- Deselect all items
-              local itemData = seq:findMIDI(self.xpos, self.ypos)
-              if ( itemData ) then
-                reaper.SetMediaItemInfo_Value(itemData[1], "B_UISEL", 1)
-                reaper.Main_OnCommand(midiCMD, 0) -- Deselect all items
-              end
-            end
-          end
-          if ( gfx.mouse_cap & self.NEWMIDICAP == 0 ) then
-            self:dragBlock(Inew-1, Jnew-2)
-            self.dragging = self.DRAG_BLOCK
-          else
-            self.dragging = self.DRAG_NEW_MIDI_ITEM
-            self.newItem = {}
-            self.newItem.xpos = Inew-1
-            self.newItem.ypos = Jnew-2
-            self.newItem.yc   = Jnew-2
-          end
-        else
-          -- Change selection if it wasn't the initial click
-          if ( self.dragging ) then
-            if ( self.dragging == self.DRAG_BLOCK ) then
-              self:dragBlock(Inew-1, Jnew-2)
-            elseif ( self.dragging == self.DRAG_NEW_MIDI_ITEM ) then
-              self.newItem.yc   = Jnew-2
-            end
-          end
+          self:resetShiftSelect()
+          self:renamePattern()
         end
       end
+      
+      self.lastRight = 1
+      self.lastRightTime = reaper.time_precise()
     else
-      -- Pattern / settings area
-      if ( lastLeft == 0 ) then
-        local boxsize = self.cfg.boxsize
-        if ( gfx.mouse_x > gfx.w - self.cfg.nameSize ) then
-          if ( gfx.mouse_x < gfx.w - self.cfg.nameSize + boxsize ) then
-            i = math.floor((gfx.mouse_y - 2) / fh)-2
-            if ( i > 0 ) then
-              local pNames = self.patternNames[self.xpos]
-              -- Which pattern are we trying to delete?
-              if i <= #pNames then
-                reaper.Undo_OnStateChange2(0, "Sequencer: Delete from pool")
-                reaper.MarkProjectDirty(0)
-                local scroll = math.floor( self.fov.scrollpat * (#pNames - self.cfg.patternLines + 1) )
-                self:deleteFromPool(self.xpos, i+scroll)
-                reaper.UpdateArrange()
-              end
-            end
-          end
-        end
-      end
+      self.lastRight = 0
     end
     
-    self.lastLeft = 1
-    self.lastLeftTime = reaper.time_precise()
-  else
-    if ( self.dragging == self.DRAG_NEW_MIDI_ITEM ) then
-      local Inew, Jnew = seq:calcGridCoord()
-      local diff = Jnew - 2 - self.newItem.ypos
-      local yp = math.min( self.newItem.ypos + diff, self.newItem.ypos )
-      self:createPattern( self.newItem.xpos, yp, math.abs(diff)+1 )
-      self:updateGUI()
-    end
-    self.scrolldrag = nil
-    self.dragging = nil
-    self.lastLeft = 0
-  end
-  
-  if ( right == 1 ) then
-    if ( gfx.mouse_y < fh and self.lastRight == 0 ) then
-      local cTrack = math.floor( gfx.mouse_x / fw )
-      if ( cTrack < reaper.CountTracks(0) ) then
-        seq:renameTrack(scrollx + cTrack - 1)
-      end
-    elseif ( gfx.mouse_y > 2 * fh ) then
-      local Inew, Jnew = seq:calcGridCoord()
-      if ( Inew and Jnew ) then        
+    if ( middle == 1 ) then
+      if ( gfx.mouse_y > (2 * fh) and self.lastMiddle == 0 ) then
+        local Inew, Jnew = seq:calcGridCoord()
         self.xpos = Inew - 1
         self.ypos = Jnew - 2
         self:forceCursorInRange()
-        self:resetShiftSelect()
-        self:renamePattern()
+        if ( Inew and Jnew ) then
+          reaper.Undo_OnStateChange2(0, "Sequencer: Uniqueify Pattern")
+          reaper.MarkProjectDirty(0)
+          seq:uniqueifyElement(self.xpos, self.ypos)
+        end
       end
+      self.lastMiddle = 1
+    else
+      self.lastMiddle = 0
     end
-    
-    self.lastRight = 1
-    self.lastRightTime = reaper.time_precise()
-  else
-    self.lastRight = 0
-  end
-  
-  if ( middle == 1 ) then
-    if ( gfx.mouse_y > (2 * fh) and self.lastMiddle == 0 ) then
-      local Inew, Jnew = seq:calcGridCoord()
-      self.xpos = Inew - 1
-      self.ypos = Jnew - 2
-      self:forceCursorInRange()
-      if ( Inew and Jnew ) then
-        reaper.Undo_OnStateChange2(0, "Sequencer: Uniqueify Pattern")
-        reaper.MarkProjectDirty(0)
-        seq:uniqueifyElement(self.xpos, self.ypos)
-      end
-    end
-    self.lastMiddle = 1
-  else
-    self.lastMiddle = 0
   end
   
   self.hoverGUID = nil
@@ -3454,7 +3538,7 @@ local function updateLoop()
     if ( seq.cfg.followRow == 1 ) then
       if ( seq.ypos ~= seq.lasty ) then
         local rps = reaper.TimeMap2_QNToTime(0, 1) * seq.cfg.zoom
-        reaper.SetEditCurPos2(0, seq.ypos * rps, false, false)
+        reaper.SetEditCurPos2(0, seq.ypos * rps, true, false)
       end
     end  
   
@@ -3527,6 +3611,7 @@ local function Main()
   gfx.init(scriptName, width, height, 0, xpos, ypos)
   seq:computeSize()
   seq.patternScrollbar = scrollbar.create(10)
+  seq.sequencerScrollbar = scrollbar.create(seq.cfg.scrollbarWidth)
   
   seq:updateData()
   reaper.defer(updateLoop)
