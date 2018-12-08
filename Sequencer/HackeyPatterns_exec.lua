@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.47
+@version 0.48
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.48 (2018-12-08)
+   + Change name reaper-kb.
  * v0.47 (2018-11-13)
    + When follow row is on, actually follow on the timeline.
    + Added option for minimal pattern display (set tinyPatterns to 1 in the config file).
@@ -2712,7 +2714,7 @@ end
 local function findCommandID(name)
   local commandID
   local lines = {}
-  local fn = reaper.GetResourcePath() .. '//' .. "Reaper-kb.ini"
+  local fn = reaper.GetResourcePath() .. '/reaper-kb.ini'
   for line in io.lines(fn) do
     lines[#lines + 1] = line
   end
