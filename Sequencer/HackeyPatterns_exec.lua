@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.48
+@version 0.49
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.49 (2019-01-28)
+   + Added option to close pattern window when hackey trackey is opened.
  * v0.48 (2018-12-08)
    + Change name reaper-kb.
  * v0.47 (2018-11-13)
@@ -217,6 +219,7 @@ seq.cfg.tinyPatterns   = 0
 seq.cfg.lineDist       = 8
 seq.cfg.scrollbarWidth = 13
 seq.cfg.minPatWidth    = 45
+seq.cfg.closeOnHT      = 1
 
 seq.advance       = 1
 seq.cfg.zoom      = 1
@@ -2530,6 +2533,10 @@ function seq:startHT(track, row)
           reaper.SetProjExtState(0, "MVJV001", "initialiseAtTrack", track)
           reaper.SetProjExtState(0, "MVJV001", "initialiseAtRow", row*rps)
           self:callScript(hackeyTrackey)
+          
+          if ( self.cfg.closeOnHT == 1 ) then
+            self:terminate()
+          end
         end
       end
     end
