@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.49
+@version 0.50
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.50 (2020-01-05)
+   + Bugfix for floating point values in config.
  * v0.49 (2019-01-28)
    + Added option to close pattern window when hackey trackey is opened.
  * v0.48 (2018-12-08)
@@ -177,7 +179,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.47 (BETA)"
+scriptName = "Hackey Patterns v0.50 (BETA)"
 postMusic = 50000
 midiCMD = 40153
 
@@ -1392,7 +1394,7 @@ function seq:loadConfig(fn, cfg)
       io.input(file)
       local str = io.read()
       while ( str ) do
-        for k, v in string.gmatch(str, "(%w+)=(%w+)") do
+        for k, v in string.gmatch(str, "(%w+)=(%w+.?%w*)") do
           local no = tonumber(v)
         
           if ( no ) then
@@ -1507,7 +1509,7 @@ function seq:populateSequencer()
   end
   local dy = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
   local guidToPatternIdx = self.guidToPatternIdx
-  
+
   for i=0,reaper.CountMediaItems(0)-1 do
     local mediaItem = reaper.GetMediaItem(0,i)
     local trackIdx = trackToIndex[reaper.GetMediaItemTrack(mediaItem)]
@@ -3621,7 +3623,6 @@ local function Main()
   seq:computeSize()
   seq.patternScrollbar = scrollbar.create(10)
   seq.sequencerScrollbar = scrollbar.create(seq.cfg.scrollbarWidth)
-  
   seq:updateData()
   reaper.defer(updateLoop)
 end
