@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.50
+@version 0.51
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,9 @@
 
 --[[
  * Changelog:
+ * v0.51 (2020-04-07)
+   + Add mute toggle.
+   + Fix issue when zooming too much.
  * v0.50 (2020-01-05)
    + Bugfix for floating point values in config.
  * v0.49 (2019-01-28)
@@ -179,7 +182,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.50 (BETA)"
+scriptName = "Hackey Patterns v0.51 (BETA)"
 postMusic = 50000
 midiCMD = 40153
 
@@ -277,7 +280,6 @@ local function GetVisibleTrack(no)
   end
 end
 
--- You can find the keycodes by setting printKeys to 1 and hitting any key.
 function seq:loadKeys( keySet )
   local keyset = keySet or seq.cfg.keyset
   
@@ -310,6 +312,7 @@ function seq:loadKeys( keySet )
     keys.cutBlock       = { 1,    0,  0,    24 }            -- CTRL + X
     keys.pasteBlock     = { 1,    0,  0,    22 }            -- CTRL + V
     keys.copyBlock      = { 1,    0,  0,    3 }             -- CTRL + C
+    keys.toggleMute     = { 0,    0,  0,    109 }           -- M
     keys.help           = { 0,    0,  0,    26161 }         -- F1
     keys.advancedown    = { 0,    0,  0,    26164 }         -- F4
     keys.renameAll      = { 0,    0,  0,    26165 }         -- F5
@@ -355,8 +358,8 @@ function seq:loadKeys( keySet )
     keys.off2           = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned    
     keys.renoiseplay    = { 0,    0,  0,    500000000000000000000000 }    -- Unassigned
 
-    keys.zoomin         = { 0,    0,  1,    45 }            -- +
-    keys.zoomout        = { 0,    0,  1,    43 }            -- -
+    keys.zoomout        = { 0,    0,  1,    45 }            -- +
+    keys.zoomin         = { 0,    0,  1,    43 }            -- -
     
     keys.shiftpgdn      = { 0,    0,  1,    1885824110 }    -- Shift + PgDn
     keys.shiftpgup      = { 0,    0,  1,    1885828464 }    -- Shift + PgUp
@@ -2117,6 +2120,31 @@ function seq:mend(xpos, row)
   end
 end
 
+function seq:muteRange(xpos, row)
+  local rps         = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
+  local eps         = self.eps
+  local reaper      = reaper
+  local cTrack      = reaper.GetTrack(0, self:visibilityTrafo(xpos))
+  
+  for i=0,reaper.CountMediaItems(0)-1 do
+    local mediaItem = reaper.GetMediaItem(0, i)
+    if ( mediaItem ) then
+      -- Only deal with media items on this track
+      if ( reaper.GetMediaItem_Track(mediaItem) == cTrack ) then
+        local d_pos = reaper.GetMediaItemInfo_Value(mediaItem, "D_POSITION")
+        if ( d_pos < postMusic ) then
+          if ( math.floor( d_pos / rps + eps ) == row ) then
+            local muted = reaper.GetMediaItemInfo_Value(mediaItem, "B_MUTE")
+            reaper.SetMediaItemInfo_Value(mediaItem, "B_MUTE", 1 - muted)
+          end
+        end
+      end
+    end
+  end
+  
+  seq:updateData()
+end
+
 function seq:deleteRange(xpos, row, tcnt, rcnt, noupdate)
   local trackItems  = self.trackItems
   local rps         = reaper.TimeMap2_QNToTime(0, 1) * self.cfg.zoom
@@ -2178,6 +2206,11 @@ function seq:deleteRange(xpos, row, tcnt, rcnt, noupdate)
   if ( not noupdate ) then
     seq:updateData()
   end
+end
+
+function seq:mute()
+  self:muteRange(self.xpos, self.ypos)
+  reaper.UpdateArrange()  
 end
 
 function seq:delete()
@@ -3456,6 +3489,8 @@ local function updateLoop()
         seq:uniqueifyElement(seq.xpos, seq.ypos)
         reaper.Undo_EndBlock("Sequencer: Uniqueify Pattern", 0)
         seq:PopUIBlock()
+      elseif inputs('toggleMute') then
+        seq:mute()
       elseif ( inputs('playfrom') ) then
         seq:gotoRow(seq.ypos)
         reaper.Main_OnCommand(40044, 0)
@@ -3466,10 +3501,14 @@ local function updateLoop()
         seq:addItem( seq.charCodes[ lastChar ] )
         lastChar = 0
         seq:popPosition()
-      elseif ( inputs('zoomin') ) then
-        seq.cfg.zoom = seq.cfg.zoom * 2
       elseif ( inputs('zoomout') ) then
-        seq.cfg.zoom = seq.cfg.zoom / 2
+        seq.cfg.zoom = seq.cfg.zoom * 2
+      elseif ( inputs('zoomin') ) then
+        local trial = seq.cfg.zoom / 2
+      
+        if seq.res * trial >= 1 then
+          seq.cfg.zoom = trial
+        end
       elseif ( inputs('panic') ) then
         reaper.Main_OnCommand(40345, 0)
       elseif ( inputs('copyBlock') ) then
