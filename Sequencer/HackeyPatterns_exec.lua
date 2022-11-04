@@ -4,7 +4,7 @@
 @links
   https://github.com/JoepVanlier/Hackey-Patterns
 @license MIT
-@version 0.51
+@version 0.52
 @about 
   ### Hackey-Patterns
   #### What is it?
@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.52 (2020-11-04)
+   + Add right mouse button menu to dock the window. Right-click in the top left area to access it.
  * v0.51 (2020-04-07)
    + Add mute toggle.
    + Fix issue when zooming too much.
@@ -3287,6 +3289,20 @@ local function updateLoop()
     seq.change = 0
   end
   seq:updateGUI()
+  
+  if gfx.mouse_cap == 2 then
+    if gfx.mouse_x < seq.cellw and gfx.mouse_y < 2 * seq.cellh then
+      local was_docked = gfx.dock(-1)
+      gfx.x = gfx.mouse_x
+      gfx.y = gfx.mouse_y
+      local menu_str = string.format("%sDock window", was_docked > 0 and "!" or "")
+      local menu_response = gfx.showmenu(menu_str)
+      if menu_response == 1 then
+        gfx.dock(1 - was_docked)
+      end
+    end
+  end
+  
   seq.lastTrackCount = reaper.CountTracks(0)
   if lastChar ~= -1 then
     seq.change = 1
