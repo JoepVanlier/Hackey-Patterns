@@ -20,6 +20,8 @@
 
 --[[
  * Changelog:
+ * v0.53 (2023-08-06)
+   + Added option to scale font size.
  * v0.52 (2020-11-04)
    + Add right mouse button menu to dock the window. Right-click in the top left area to access it.
  * v0.51 (2020-04-07)
@@ -184,7 +186,7 @@
 
 -- 41072 => Paste pooled
 
-scriptName = "Hackey Patterns v0.51 (BETA)"
+scriptName = "Hackey Patterns v0.53 (BETA)"
 postMusic = 50000
 midiCMD = 40153
 
@@ -227,6 +229,7 @@ seq.cfg.lineDist       = 8
 seq.cfg.scrollbarWidth = 13
 seq.cfg.minPatWidth    = 45
 seq.cfg.closeOnHT      = 1
+seq.cfg.fontscale      = 1
 
 seq.advance       = 1
 seq.cfg.zoom      = 1
@@ -584,9 +587,10 @@ function seq:loadColors(colorScheme)
   self.colors.linecolor7          = {self.colors.linecolor5[1]*mix+(1-mix)*(self.colors.windowbackground[1]), self.colors.linecolor5[2]*mix+(1-mix)*(self.colors.windowbackground[1]), self.colors.linecolor5[3]*mix+(1-mix)*(self.colors.windowbackground[2]), self.colors.linecolor5[4]}
   self.colors.selectLight         = {self.colors.selectcolor[1], self.colors.selectcolor[2], self.colors.selectcolor[3], .2 * self.colors.selectcolor[4]}
   self.colors.patternFont         = "DejaVu Sans"
-  self.colors.patternFontSize     = 12
+  self.colors.patternFontSize     = 12 * self.cfg.fontscale
   
   gfx.setfont(1, self.colors.patternFont, self.colors.patternFontSize)
+
   local w, h  = gfx.measurestr("X")
   self.cellw  = w * self.cfg.nChars
   self.cellh  = h
@@ -3295,10 +3299,13 @@ local function updateLoop()
       local was_docked = gfx.dock(-1)
       gfx.x = gfx.mouse_x
       gfx.y = gfx.mouse_y
-      local menu_str = string.format("%sDock window", was_docked > 0 and "!" or "")
+      local menu_str = string.format("%sDock window|>Set font scale|1|1.5|2|2.5|3", was_docked > 0 and "!" or "")
       local menu_response = gfx.showmenu(menu_str)
       if menu_response == 1 then
         gfx.dock(1 - was_docked)
+      elseif menu_response > 1 then
+        seq.cfg.fontscale = 1 + (menu_response - 2) * 0.5
+        seq:loadColors( seq.cfg.theme )
       end
     end
   end
