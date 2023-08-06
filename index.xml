@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Hackey Sequencer" commit="0ae9a99c0dd9d9ff3d607c974363581f2f2537f6">
+<index version="1" name="Hackey Sequencer" commit="0c0cc7f8c395e1d69c23de1cebf0489bcf8078ac">
   <category name="Sequencer">
     <reapack name="HackeyPatterns_exec.lua" type="script" desc="Hackey-Patterns: An interface plugin for REAPER 5.x and up designed to mimick the sequencer in Jeskola Buzz.">
       <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 Courier;}}
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
-{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs28 Hackey-Patterns\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \b \fs24 What is it?\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Hackey-Patterns\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel3 \b \fs24 What is it?\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 A lightweight sequencer plugin for REAPER 5.x and up.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Usage Hackey Patterns provides an alternative way for visualizing and manipulating timeline in REAPER.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Special thanks go out to TonE for reporting tons of issues.\par}
